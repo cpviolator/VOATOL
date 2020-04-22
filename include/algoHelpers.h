@@ -4,6 +4,7 @@
 #include "linAlgHelpers.h"
 
 std::vector<double> ritz_mat;
+std::vector<Complex> block_ritz_mat;
 
 //Functions used in the lanczos algorithm
 //---------------------------------------
@@ -58,7 +59,7 @@ void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, st
   std::vector<Complex> s((j + block_size) * block_size, 0.0);
   
   int count = 0;
-  while (count < 1) {    
+  while (count < 2) {    
     measOrthoDev(kSpace, r, s, j);    
     // r = r - s_{i} * v_{i}
     CAXPY(kSpace, r, s, j, false);
@@ -68,7 +69,7 @@ void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, st
       for(int k=0; k<block_size; k++) {
 	idx = i*block_size + k;
 	//alpha[alpha_block_offset + idx] += s[alpha_block_offset + idx];
-	//beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
+	//if(j>0) beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
       }
     }    
     count++;
@@ -159,7 +160,7 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
   }
 
   //a_j = v_j^dag * r
-  int idx = 0, idx_conj = 0;
+  int idx = 0;
   for(int b=0; b<block_size; b++) {
     for(int c=0; c<block_size; c++) {
       idx = b*block_size + c;
@@ -173,21 +174,22 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
       caxpy(-alpha[block_offset + idx], kSpace[j+b], r[c]);
     }
   }
-  int start = (j > num_keep && j>0) ? j - block_size : 0;
-  for (int i = start; i < j; i++) {
+
+  // r = r - b_{j-1} * v_{j-1}
+  int start = (j > num_keep) ? j - block_size : 0;
+  for (int i = start/block_size; i < j/block_size; i++) {
+    int offset = i*block_data_length;
     for(int b=0; b<block_size; b++) {
       for(int c=0; c<block_size; c++) {
 	idx = b*block_size + c;
-	
-	// r = r - b_{j-1} * v_{j-1}
-	//caxpy(-beta[block_offset - block_data_length + idx], kSpace[j - block_size + b], r[c]);
+	caxpy(-beta[offset + idx], kSpace[j - block_size + b], r[c]);
       }
     }
   }
   
   // Orthogonalise r against the kSpace
-  if(j>0) for(int b=0; b<block_size; b++) orthogonalise(r[b], kSpace, j);
-  //if(j>-1) iterRefineBlock(kSpace, r, alpha, beta, j);
+  //if(j>0) for(int b=0; b<block_size; b++) orthogonalise(r[b], kSpace, j);
+  iterRefineBlock(kSpace, r, alpha, beta, j);
 
   gramSchmidtRecursive(r, beta, block_offset, 10);
 
@@ -199,6 +201,7 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 	       c, b, abs(beta[block_offset + idx]));
     }
   }
+  
   //Prepare next step.
   for(int b=0; b<block_size; b++) copy(kSpace[j+block_size + b], r[b]);
 }
@@ -265,6 +268,101 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
     for (int i = num_locked; i < nKr; i++) { alpha[i] *= -1.0; }
   }  
 }
+
+void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<Complex> &arrow_eigs, std::vector<double> &residua, bool reverse) {
+
+  int block_data_length = block_size * block_size;
+  int dim = nKr - num_locked;
+  if (dim % block_size != 0) {
+    printf("dim = %d modulo block_size = %d != 0", dim, block_size);
+    exit(0);
+  }  
+  int blocks = dim / block_size;
+  
+  if (arrow_pos % block_size != 0) {
+    printf("arrow_pos = %d modulo block_size = %d != 0", arrow_pos, block_size);
+    exit(0);
+  }
+  
+  int block_arrow_pos = arrow_pos / block_size;
+  int num_locked_offset = (num_locked / block_size) * block_data_length;  
+
+  // Eigen objects
+  MatrixXcd T = MatrixXcd::Zero(dim, dim);
+  block_ritz_mat.resize(dim * dim);
+  int idx = 0;
+  
+  // Populate the r and eblocks
+  for (int i = 0; i < block_arrow_pos; i++) {
+    for (int b = 0; b < block_size; b++) {
+      
+      // E block
+      idx = i * block_size + b;
+      T(idx, idx) = arrow_eigs[idx + num_locked];
+      
+      for (int c = 0; c < block_size; c++) {
+	// r blocks
+	idx = num_locked_offset + b * block_size + c;
+	T(arrow_pos + c, i * block_size + b) = beta[i * block_data_length + idx];
+	T(i * block_size + b, arrow_pos + c) = conj(beta[i * block_data_length + idx]);
+      }
+    }
+  }
+
+  // Add the alpha blocks
+  for (int i = block_arrow_pos; i < blocks; i++) {
+    for (int b = 0; b < block_size; b++) {
+      for (int c = 0; c < block_size; c++) {
+	idx = num_locked_offset + b * block_size + c;
+	T(i * block_size + b, i * block_size + c) = alpha[i * block_data_length + idx];
+      }
+    }
+  }
+
+  // Add the beta blocks
+  for (int i = block_arrow_pos; i < blocks - 1; i++) {
+    for (int b = 0; b < block_size; b++) {
+      for (int c = 0; c < b + 1; c++) {
+	idx = num_locked_offset + b * block_size + c;
+	// Sub diag
+	T((i + 1) * block_size + c, i * block_size + b) = beta[i * block_data_length + idx];
+	// Super diag
+	T(i * block_size + b, (i + 1) * block_size + c) = conj(beta[i * block_data_length + idx]);
+      }
+    }
+  }
+
+  // Invert the spectrum due to Chebyshev (except the arrow diagonal)
+  if (reverse) {
+    for (int b = 0; b < dim; b++) {
+      for (int c = 0; c < dim; c++) {
+	T(c, b) *= -1.0;
+	if (restart_iter > 0)
+	  if (b == c && b < arrow_pos && c < arrow_pos) T(c, b) *= -1.0;
+      }
+    }
+  }
+
+  // Eigensolve the arrow matrix
+  Eigen::SelfAdjointEigenSolver<MatrixXcd> eigensolver;
+  eigensolver.compute(T);
+
+  // Populate the aroow_eigs array with eigenvalues
+  for (int i = 0; i < dim; i++) arrow_eigs[i + num_locked] = eigensolver.eigenvalues()[i];
+  
+  // Repopulate ritz matrix: COLUMN major
+  for (int i = 0; i < dim; i++)
+    for (int j = 0; j < dim; j++) block_ritz_mat[dim * i + j] = eigensolver.eigenvectors().col(i)[j];
+  
+  for (int i = 0; i < blocks; i++) {
+    for (int b = 0; b < block_size; b++) {
+      idx = b * (block_size + 1);
+      residua[i * block_size + b + num_locked] = abs(beta[nKr * block_size - block_data_length + idx] * block_ritz_mat[dim * (i * block_size + b + 1) - 1]);
+    }
+  }  
+}
+  
+
 
 void computeEvals(Complex **mat, std::vector<Complex*> &kSpace, std::vector<double> &residua, std::vector<Complex> &evals, int nEv) {
   
@@ -353,6 +451,55 @@ void computeKeptRitz(std::vector<Complex*> &kSpace, int nKr, int num_locked, int
   for (int i = 0; i < iter_keep; i++)
     beta[i + num_locked] = beta[nKr - 1] * mat.col(i)[nKr-num_locked-1];  
 }
+
+void computeKeptRitzComplex(std::vector<Complex*> &kSpace, int nKr, int num_locked, int iter_keep, int block_size, std::vector<Complex> &beta) {
+  
+  int dim = nKr - num_locked;
+  MatrixXcd mat = MatrixXcd::Zero(dim, iter_keep);
+  for (int j = 0; j < iter_keep; j++) 
+    for (int i = 0; i < dim; i++) 
+      mat(i,j) = block_ritz_mat[j*dim + i];  
+  rotateVecsComplex(kSpace, mat, num_locked, iter_keep, dim); 
+  
+  //Update beta and residua
+  for(int b=0; b<block_size; b++) copy(kSpace[num_locked + iter_keep + b], kSpace[nKr + b]);
+
+  // Compute new r blocks
+  // Use Eigen, it's neater
+  
+  MatrixXcd beta_mat = MatrixXcd::Zero(block_size, block_size);
+  MatrixXcd ri = MatrixXcd::Zero(block_size, block_size);
+  MatrixXcd ritzi = MatrixXcd::Zero(block_size, block_size);
+  int blocks = iter_keep / block_size;
+  int idx = 0;
+  int block_data_length = block_size * block_size;
+  int beta_offset = nKr * block_size - block_data_length;
+  int num_locked_offset = num_locked * block_size;
+
+  for (int b = 0; b < block_size; b++) {
+    for (int c = 0; c < b + 1; c++) {
+      idx = b * block_size + c;
+      beta_mat(c, b) = beta[beta_offset + idx];
+    }
+  }
+  for (int i = 0; i < blocks; i++) {
+    for (int b = 0; b < block_size; b++) {
+      for (int c = 0; c < block_size; c++) {
+	idx = i * block_size * dim + b * dim + (dim - block_size) + c;
+	ritzi(c, b) = block_ritz_mat[idx];
+      }
+    }
+    
+    ri = beta_mat * ritzi;
+    for (int b = 0; b < block_size; b++) {
+      for (int c = 0; c < block_size; c++) {
+	idx = num_locked_offset + b * block_size + c;
+	beta[i * block_data_length + idx] = ri(c, b);
+      }
+    }
+  }
+}
+
 
 void permuteVecs(std::vector<Complex*> &kSpace, Eigen::MatrixXd mat, int num_locked, int size){
 

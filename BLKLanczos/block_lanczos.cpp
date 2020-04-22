@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
     zero(r[i]);
   }
   
-  printf("START LANCZOS SOLUTION\n");
+  printf("START BLOCK LANCZOS SOLUTION\n");
 
   bool convergence = false;
   int num_converged = 0;
@@ -114,8 +114,6 @@ int main(int argc, char **argv) {
   for(int b=0; b<block_size; b++) {
     for(int i=0; i<Nvec; i++) {
       r[b][i].real(drand48());
-      //r[b][i].imag(drand48());
-      //printf("elem [%d][%d] = (%e,%e)\n", b, i, r[b][i].real(), r[b][i].imag());
     }
   }
   
