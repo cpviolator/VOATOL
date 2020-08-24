@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 64
+#define Nvec 128
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -86,8 +86,8 @@ int main(int argc, char **argv) {
   //---------------------------------------------------------------------  
   printf("START EIGEN SOLUTION\n");
   double t1 = clock();  
-  Eigen::SelfAdjointEigenSolver<MatrixXcd> eigensolverRef(ref);
-  cout << eigensolverRef.eigenvalues() << endl;
+  //Eigen::SelfAdjointEigenSolver<MatrixXcd> eigensolverRef(ref);
+  //cout << eigensolverRef.eigenvalues() << endl;
   double t2e = clock() - t1;
   printf("END EIGEN SOLUTION\n");
   printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
@@ -157,9 +157,7 @@ int main(int argc, char **argv) {
     
     // (2) p = m-k steps to get to the m-step factorisation
     for (int step = num_keep; step < nKr; step++) {
-      printf("step %d starting\n", restart_iter+1);
       lanczosStep(mat, kSpace, beta, alpha, r, num_keep, step, a_min, a_max, poly_deg);
-      printf("step %d done\n", restart_iter+1);
     }
     iter += (nKr - num_keep);
     
@@ -258,7 +256,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nEv; i++) {
       //int idx = reverse ? (Nvec-1) - i : i;      
       int idx = i;
-      printf("EigenComp[%04d]: %+.16e\n", i, (evals[i].real() - eigensolverRef.eigenvalues()[idx])/eigensolverRef.eigenvalues()[idx]);
+      //printf("EigenComp[%04d]: %+.16e\n", i, (evals[i].real() - eigensolverRef.eigenvalues()[idx])/eigensolverRef.eigenvalues()[idx]);
     }
   }
 }
