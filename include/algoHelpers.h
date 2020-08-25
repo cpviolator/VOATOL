@@ -112,6 +112,32 @@ void lanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
   copy(kSpace[j+1], r[0]);
 }
 
+void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
+		 std::vector<Complex*> &upperHess,
+		 std::vector<Complex*> &r, int j) {
+
+  matVec(mat, r[0], kSpace[j]);
+
+  for (int i = 0; i < j+1; i++) {
+    //H_{j,i}_j = v_i^dag * r
+    upperHess[i][j] = cDotProd(kSpace[i], r[0]);
+    //r = r - v_j * H_{j,i}
+    caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
+  }
+  
+  if(j < (int)kSpace.size() - 1) {
+    upperHess[j+1][j].real(normalise(r[0]));
+  }
+    
+  // Orthogonalise r against the K space
+  //if (j > 0)
+  //for (int k = 0; k < 2; k++) orthogonalise(r, kSpace, j);
+  
+  //Prepare next step.
+  copy(kSpace[j+1], r[0]);
+}
+
+
 void reorder(std::vector<Complex*> &kSpace, std::vector<double> alpha, int nKr, bool reverse) {
   int i = 0;
   Complex temp[Nvec];
