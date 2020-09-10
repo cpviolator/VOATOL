@@ -1,41 +1,40 @@
-#ifndef LINALGHELPERS_H
-#define LINALGHELPERS_H
+#pragma once
 
 #include <omp.h>
 
 //Simple Complex Linear Algebra Helpers
 void zero(Complex *x) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) x[i] = 0.0;
 }
 
 void copy(Complex *x, Complex *y) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) x[i] = y[i];
 }
 
 void ax(double a, Complex *x) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) x[i] *= a;
 }
 
 void cax(Complex a, Complex *x) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) x[i] *= a;
 }
 
 void axpy(double a, Complex *x, Complex *y) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) y[i] += a*x[i];
 }
 
 void caxpy(Complex a, Complex *x, Complex *y) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) y[i] += a*x[i];
 }
 
 void axpby(double a, Complex *x, double b, Complex *y) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) {
     y[i] *= b;
     y[i] += a*x[i];
@@ -43,7 +42,7 @@ void axpby(double a, Complex *x, double b, Complex *y) {
 }
 
 void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
-  //#pragma omp parallel for
+#pragma omp parallel for
   for(int i=0; i<Nvec; i++) {
     y[i] *= b;
     y[i] += a*x[i];
@@ -52,31 +51,27 @@ void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 
 Complex dotProd(Complex *x, Complex *y) {
   Complex prod = 0.0;
-  //#pragma omp parallel for reduction(+:prod) 
+#pragma omp parallel for reduction(+:prod) 
   for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
   return prod;
 }
 
-
-Complex cDotProd(Complex *x, Complex *y) {
+Complex cDotProd(const Complex *x, const Complex *y) {
   Complex prod = 0.0;
-  //#pragma omp parallel for reduction(+:prod) 
+#pragma omp parallel for reduction(+:prod) 
   for(int i=0; i<Nvec; i++) prod += conj(x[i])*y[i];
   return prod;
 }
 
 double norm2(Complex *x) {
   double sum = 0.0;
-  //#pragma omp parallel for reduction(+:sum)
+#pragma omp parallel for reduction(+:sum)
   for(int i=0; i<Nvec; i++) sum += (conj(x[i])*x[i]).real();
   return sum;
 }
 
 double norm(Complex *x) {
-  double sum = 0.0;
-  //#pragma omp parallel for reduction(+:sum)
-  for(int i=0; i<Nvec; i++) sum += (conj(x[i])*x[i]).real();
-  return sqrt(sum);
+  return sqrt(norm2(x));
 }
 
 double normalise(Complex *x) {
@@ -300,4 +295,3 @@ void gramSchmidt(std::vector<Complex*> &vecs) {
   }
 }
 
-#endif

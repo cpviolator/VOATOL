@@ -151,6 +151,10 @@ int main(int argc, char **argv) {
   copy(kSpace[0], r[0]);
 
   t1 = clock();
+
+  // START TRLM
+  // Thick restarted Lanczos method for symmetric eigenvalue problems
+  //-----------------------------------------------------------------
   
   // Loop over restart iterations.
   while(restart_iter < max_restarts && !converged) {

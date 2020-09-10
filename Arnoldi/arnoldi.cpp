@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 64
+#define Nvec 256
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -29,9 +29,9 @@ bool verbose = false;
 int main(int argc, char **argv) {
 
   //Define the problem
-  if (argc < 6 || argc > 6) {
+  if (argc < 7 || argc > 7) {
     cout << "Built for matrix size " << Nvec << endl;
-    cout << "./arnoldi <nKr> <nEv> <check-interval> <tol> <threads>" << endl;
+    cout << "./arnoldi <nKr> <nEv> <check-interval> <tol> <threads> <QR_type: 0=eig, 1=schur, 2=qr>" << endl;
     exit(0);
   }
   
@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
   int check_interval = atoi(argv[3]);
   double tol = atof(argv[4]);
   int threads = atoi(argv[5]);
+  int QR_type = atoi(argv[6]);
 
   omp_set_num_threads(threads);
   Eigen::setNbThreads(threads);
@@ -61,8 +62,7 @@ int main(int argc, char **argv) {
   //---------------------------------------------------------------------  
   printf("START EIGEN SOLUTION\n");
   double t1 = clock();  
-  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver(ref);
-  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolverUH;
+  //Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver(ref);
   double t2e = clock() - t1;
   printf("END EIGEN SOLUTION\n");
   printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
@@ -73,7 +73,8 @@ int main(int argc, char **argv) {
   //Eigenvalues and their residua
   std::vector<double> residua(nKr, 0.0);
   std::vector<Complex> evals(nKr, 0.0);
-
+  std::vector<std::pair<Complex, int>> array(nKr);
+  
   //Krylov Space.
   std::vector<Complex*> kSpace(nKr+1);
   for(int i=0; i<nKr+1; i++) {
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
     r[i] = (Complex*)malloc(Nvec*sizeof(Complex));
     zero(r[i]);
   }
-  
+
   printf("START ARNOLDI SOLUTION\n");
 
   bool convergence = false;
@@ -119,6 +120,9 @@ int main(int argc, char **argv) {
   // START ARNOLDI
   // ARNOLDI Method for Asymmetric Eigenvalue Problems
   //-------------------------------------------------
+    // Eigen objects for Arnoldi vector rotation
+  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolverUH;  
+  Eigen::ComplexSchur<MatrixXcd> schurUH;
   
   int j=0;
   while(!convergence && j < nKr) {
@@ -126,35 +130,66 @@ int main(int argc, char **argv) {
     arnoldiStep(mat, kSpace, upperHess, r, j);
     
     if((j+1)%check_interval == 0) {
-      
-      //Construct the Upper Hessenberg matrix H_k      
-      MatrixXcd upperHessEigen = MatrixXcd::Zero(j+1, j+1);      
-      for(int k=0; k<j+1; k++) {
-	for(int i=0; i<j+1; i++) {
+      int dim = j+1;
+      MatrixXcd Qmat = MatrixXcd::Identity(dim, dim);
+      MatrixXcd Rmat = MatrixXcd::Zero(dim, dim);
+      MatrixXcd upperHessEigen = MatrixXcd::Zero(dim, dim);      
+      for(int k=0; k<dim; k++) {
+	for(int i=0; i<dim; i++) {
+	  Rmat(k,i) = upperHess[k][i];
 	  upperHessEigen(k,i) = upperHess[k][i];
 	}
+      }      
+      double mat_norm = 0.0;
+      switch(QR_type) {
+      case 0:
+	mat_norm = upperHessEigen.norm();
+	eigenSolverUH.compute(upperHessEigen);
+	for(int i=0; i<dim; i++)
+	  array[i] = std::make_pair(eigenSolverUH.eigenvalues()[i], i);
+	break;
+      case 1:
+	schurUH.computeFromHessenberg(Rmat, Qmat);
+	for(int i=0; i<dim; i++)
+	  array[i] = std::make_pair(schurUH.matrixT().col(i)[i], i);
+	break;
+      case 2:
+	qrFromUpperHess(upperHessEigen, Qmat, Rmat, dim, 0);
+	for(int i=0; i<dim; i++)
+	  array[i] = std::make_pair(Rmat.col(i)[i], i);
+	break;
       }
 
-      // Eigensolve dense UH
-      eigenSolverUH.compute(upperHessEigen);      
+      //for(int i=0; i<dim; i++) cout << array[i].first << " " << array[i].second << endl;    
+      std::sort(array.begin(), array.begin() + dim,
+		[] (const pair<Complex,int> &a,
+		    const pair<Complex,int> &b) {
+		  return (abs(a.first) < abs(b.first)); } );   
+      //for(int i=0; i<dim; i++) cout << array[i].first << " " << abs(array[i].first) << " " << array[i].second << endl;
       
-      // mat_norm and rediua are updated.
-      for (int i = 0; i < j+1; i++) {
-	mat_norm = upperHessEigen.norm();
-	residua[i] = abs(upperHess[j+1][j] * eigenSolverUH.eigenvectors().col(i)[j]);
+      double beta = upperHess[dim][dim-1].real();
+      num_converged = 0;
+      for(int i=0; i<dim; i++) {
+	double res = 0.0;
+	switch(QR_type) {
+	case 0:
+	  res = abs(beta * eigenSolverUH.eigenvectors().col(i)[dim-1]);
+	  break;
+	case 1:
+	  res = abs(beta * schurUH.matrixU().col(array[i].second)[dim-1]);	
+	  break;
+	case 2:
+	  res = abs(beta * Qmat.col(array[i].second)[dim-1]);
+	  break;
+	}
+	if(res < tol * abs(array[i].first)) {
+	  num_converged++;
+	}
+	//printf("residuum[%d] = %e, cond = %e\n", i, res, tol * abs(array[i].first));
       }
       
-      //Halting check
-      if (nEv <= j+1) {
-	num_converged = 0;
-	for(int i=0; i<j+1; i++) {
-	  if(residua[i] < tol * mat_norm) num_converged++;
-	}	
-	
-	printf("%04d converged eigenvalues at iter %d\n", num_converged, j+1);
-	
-	if (num_converged >= nEv) convergence = true;	
-      }            
+      printf("%04d converged eigenvalues at iter %d\n", num_converged, j);
+      if (num_converged >= nEv) convergence = true;      
     }
     j++;
   }
@@ -168,17 +203,103 @@ int main(int argc, char **argv) {
     printf("Arnoldi computed the requested %d vectors in %d steps in %e secs.\n", nEv, j, t2l/CLOCKS_PER_SEC);
     
     // Compute Eigenvalues
-    rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors(), 0, j, j);
+    int dim = j;
+    MatrixXcd Qmat = MatrixXcd::Identity(dim, dim);
+    MatrixXcd Rmat = MatrixXcd::Zero(dim, dim);
+    MatrixXcd upperHessEigen = MatrixXcd::Zero(dim, dim);      
+    for(int k=0; k<dim; k++) {
+      for(int i=0; i<dim; i++) {
+	Rmat(k,i) = upperHess[k][i];
+	upperHessEigen(k,i) = upperHess[k][i];
+      }
+    }
+
+    switch(QR_type) {
+    case 0:
+      eigenSolverUH.compute(upperHessEigen);
+      cout << eigenSolverUH.eigenvectors() << endl << endl;
+      for(int i=0; i<dim; i++)
+	array[i] = std::make_pair(eigenSolverUH.eigenvalues()[i], i);
+      break;
+    case 1:
+      schurUH.computeFromHessenberg(Rmat, Qmat);
+      cout << schurUH.matrixU() << endl << endl;
+      for(int i=0; i<dim; i++)
+	array[i] = std::make_pair(schurUH.matrixT().col(i)[i], i);
+      break;
+    case 2:
+      qrFromUpperHess(upperHessEigen, Qmat, Rmat, dim, 0);
+      cout << Qmat << endl << endl;
+      for(int i=0; i<dim; i++)
+	array[i] = std::make_pair(Rmat.col(i)[i], i);
+      break;
+    }
+
+    for(int i=0; i<dim; i++) cout << array[i].first << " " << array[i].second << endl; 
+    std::sort(array.begin(), array.begin() + dim,
+	      [] (const pair<Complex,int> &a,
+		  const pair<Complex,int> &b) {
+		return (abs(a.first) > abs(b.first)); } );   
+    for(int i=0; i<dim; i++) cout << setprecision(16) << array[i].first << " " << abs(array[i].first) << " " << array[i].second << setprecision(6) << endl;
+
+    MatrixXcd Pmat = MatrixXcd::Zero(j, j);
+    for (int i=0; i<j; i++) Pmat(i,array[i].second) = 1;
+
+    switch(QR_type) {
+    case 0:
+      cout << eigenSolverUH.eigenvectors()*Pmat << endl << endl;
+      break;
+    case 1:
+      cout << Pmat.adjoint()*schurUH.matrixU() << endl << endl;
+      break;
+    case 2:
+      cout << Pmat.adjoint()*Qmat << endl << endl;
+      break;
+    }
+
+    
+    switch(QR_type) {
+    case 0:
+      rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors()*Pmat, 0, j, j);
+      break;
+    case 1:
+      // Compute permutation
+      rotateVecsComplex(kSpace, schurUH.matrixU(), 0, j, j);
+      break;
+    case 2:
+      // Compute permutation
+      rotateVecsComplex(kSpace, Qmat, 0, j, j);
+      //rotateVecsComplex(kSpace, Qmat*Pmat, 0, j, j);
+      //rotateVecsComplex(kSpace, Pmat*Qmat, 0, j, j);
+      //rotateVecsComplex(kSpace, Pmat*Qmat*Pmat, 0, j, j);
+      break;
+    }
+
+    for (int i=0; i<j; i++) {
+      for (int k=0; k<j; k++) {
+	cout << Pmat(i,k);
+      }
+      cout<<endl;
+    }
+    cout<<endl;
+    for (int i=0; i<j; i++) {
+      for (int k=0; k<j; k++) {
+	cout << Pmat(k,i);
+      }
+      cout<<endl;
+    }
+
+    //for (int i=0; i<j; i++) normalise(kSpace[i]);
     computeEvals(mat, kSpace, residua, evals, j);
     for (int i = 0; i < nEv; i++) {
       int idx = j - 1 - i;
-      printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);
+      printf("EigValue[%04d]: ||(%+.16e, %+.16e)|| = %+.16e residual %.16e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);
     }
     
     for (int i = 0; i < nEv; i++) {
       int idx = j - 1 - i;
       int idx_e = Nvec - 1 - i;
-      printf("EigenComp[%04d]: (%+.8e,%+.8e)\n", i, (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag())/eigenSolver.eigenvalues()[idx_e].imag());
+      //printf("EigenComp[%04d]: (%+.8e,%+.8e)\n", i, (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag())/eigenSolver.eigenvalues()[idx_e].imag());
     }
   }  
 }
