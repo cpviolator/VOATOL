@@ -12,22 +12,22 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 64
+#define Nvec 1024
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
 using Eigen::MatrixXd;
 
 #define Complex complex<double>
-#include "linAlgHelpers.h"
 #include "algoHelpers.h"
+#include "linAlgHelpers.h"
 #include "lapack.h"
 
 int main(int argc, char **argv) {
 
-  if (argc < 11 || argc > 11) {
+  if (argc < 13 || argc > 13) {
     cout << "Built for matrix size " << Nvec << endl;
-    cout << "./irlm <nKr> <nEv> <max-restarts> <diag> <tol> <spectrum: 0=LR, 1=SR> <threads> <QR_type: 0=eig, 1=schur, 2=qr> <Sym_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0 quiet>" << endl;
+    cout << "./irlm <nKr> <nEv> <max-restarts> <diag> <tol> <spectrum: 0=LR, 1=SR> <threads> <res_type: 0=eig, 1=schur, 2=qr> <rot_type: 0=eig, 1=schur, 2=qr> <Sym_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
     exit(0);
   }
   
@@ -38,9 +38,11 @@ int main(int argc, char **argv) {
   double tol = atof(argv[5]);
   bool reverse = (atoi(argv[6]) == 0 ? true : false);
   int threads = atoi(argv[7]);
-  int QR_type = atoi(argv[8]);
-  bool symm = (atoi(argv[9]) == 1 ? true : false);
-  bool verbose = (atoi(argv[10]) == 1 ? true : false);
+  int res_type = atoi(argv[8]);
+  int rot_type = atoi(argv[9]);
+  bool symm = (atoi(argv[10]) == 1 ? true : false);
+  bool verbose = (atoi(argv[11]) == 1 ? true : false);
+  bool eigen_check = (atoi(argv[12]) == 1 ? true : false);
   omp_set_num_threads(threads);
   Eigen::setNbThreads(threads);
 
@@ -48,6 +50,11 @@ int main(int argc, char **argv) {
   if (!(nKr > nEv + 6)) {
     //printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
     //exit(0);
+  }
+
+  if (nEv > Nvec || nKr > Nvec) {
+    printf("nKr=%d and nEv=%d must be less than Nvec=%d\n", nKr, nEv, Nvec);
+    exit(0);
   }
 
   printf("Mat size = %d\n", Nvec);
@@ -76,16 +83,18 @@ int main(int argc, char **argv) {
   }
   
   // Eigensolve the matrix using Eigen, use as a reference.
-  //---------------------------------------------------------------------  
-  printf("START EIGEN SOLUTION\n");
-  double t1 = clock();
+  //---------------------------------------------------------------------
   Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver;
-  if(symm) eigenSolver.compute(ref + ref.adjoint() + diagonal);
-  else eigenSolver.compute(ref);
-  double t2e = clock() - t1;
-  printf("END EIGEN SOLUTION\n");
-  for(int i=0; i<Nvec; i++) cout << eigenSolver.eigenvalues()[i] << " " << abs(eigenSolver.eigenvalues()[i]) << endl;
-  printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
+  double t1 = clock();
+  if(eigen_check) {
+    printf("START EIGEN SOLUTION\n");
+    if(symm) eigenSolver.compute(ref + ref.adjoint() + diagonal);
+    else eigenSolver.compute(ref);
+    double t2e = clock() - t1;
+    printf("END EIGEN SOLUTION\n");
+    for(int i=0; i<Nvec; i++) cout << eigenSolver.eigenvalues()[i] << " " << abs(eigenSolver.eigenvalues()[i]) << endl;
+    printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
+  }
   //-----------------------------------------------------------------------
 
   // Construct objects for Arnoldi.
@@ -185,7 +194,7 @@ int main(int argc, char **argv) {
       cout << upperHessEigen - upperHessEigen.adjoint() << endl << endl;
     }
     
-    switch(QR_type) {
+    switch(res_type) {
     case 0:
       eigenSolverUH.compute(upperHessEigen); 
       for(int i=0; i<dim; i++)
@@ -210,6 +219,7 @@ int main(int argc, char **argv) {
 		return (abs(a.first) < abs(b.first)); } );   
     //for(int i=0; i<dim; i++) cout << array[i].first << " " << abs(array[i].first) << " " << array[i].second << endl;
 
+    /*
     MatrixXcd Pmat = MatrixXcd::Zero(dim, dim);
     for (int i=0; i<dim; i++) Pmat(i,array[i].second) = 1;
 
@@ -221,11 +231,12 @@ int main(int argc, char **argv) {
 	cout<<endl;
       }
     }
+    */
     
     num_converged = 0;
     for(int i=num_locked; i<nKr; i++) {
       double res = 0.0;
-      switch(QR_type) {
+      switch(res_type) {
       case 0:
 	res = abs(beta * eigenSolverUH.eigenvectors().col(array[i].second)[dim-1]);
 	break;
@@ -246,7 +257,7 @@ int main(int argc, char **argv) {
 
     if (num_converged >= nEv || nEv == Nvec) {
       converged = true;
-    } else if (restart_iter < max_restarts -1) {
+    } else if (restart_iter < max_restarts) {
       Qmat.setIdentity();
       MatrixXcd sigma = MatrixXcd::Identity(nKr, nKr);
       for(int i=0; i<(dim - nEv); i++){
@@ -284,14 +295,16 @@ int main(int argc, char **argv) {
       
       Complex factor = Qmat(nKr-1, nEv-1);
       if(verbose) cout << upperHessEigen(nEv, nEv-1) << " " << factor << endl;
-      rotateVecsComplex(kSpace, Qmat, num_locked, nEv+1, nKr);
+      
+      rotateVecsComplex(kSpace, Qmat, num_locked, nEv, nKr);
+      
       //Update residual
       caxpby(factor, kSpace[nKr], upperHessEigen(nEv, nEv-1), kSpace[nEv]);
       upperHessEigen(nEv, nEv-1).real(normalise(kSpace[nEv]));
       upperHessEigen(nEv, nEv-1).imag(0.0);
-      //upperHessEigen(nEv, nEv-1).real(beta);
-      cout << upperHessEigen(nEv, nEv-1) << endl;
-      //copy(kSpace[nEv], kSpace[nKr]);
+      // upperHessEigen(nEv, nEv-1).real(beta);
+      // cout << upperHessEigen(nEv, nEv-1) << endl;
+      // copy(kSpace[nEv], kSpace[nKr]);
       if(upperHessEigen(nEv, nEv-1) != upperHessEigen(nEv, nEv-1) || upperHessEigen(nEv, nEv-1).real() < 1e-15) {
 	printf("Congratulations! You have reached an invariant subspace at iter %d, beta = %e\n", restart_iter, upperHessEigen(nEv, nEv-1).real());
 	
@@ -345,18 +358,20 @@ int main(int argc, char **argv) {
   eigenSolverUH.compute(upperHessEigen);
   rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors(), 0, nKr, nKr);
   computeEvals(mat, kSpace, residua, evals, nKr);
-  for (int i = 0; i < nKr; i++) {
+  for (int i = 0; i < nEv; i++) {
     int idx = nKr - 1 - i;
     printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);
   }
-  
-  for (int i = 0; i < nKr; i++) {
-    int idx = nKr - 1 - i;
-    int idx_e = Nvec - 1 - i;
-    if(symm) {
-      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag()));
-    } else { 
-      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag())/eigenSolver.eigenvalues()[idx_e].imag());
+
+  if(eigen_check) {
+    for (int i = 0; i < nEv; i++) {
+      int idx = nKr - 1 - i;
+      int idx_e = Nvec - 1 - i;
+      if(symm) {
+	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag()));
+      } else { 
+	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag())/eigenSolver.eigenvalues()[idx_e].imag());
+      }
     }
   }
 }

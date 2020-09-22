@@ -55,44 +55,52 @@ int main(int argc, char **argv) {
   double diag = atof(argv[4]);
   double tol = atof(argv[5]);
   bool hermitian = atoi(argv[6]) == 1 ? true : false;
-
-  // Construct a matrix using Eigen.
-  //---------------------------------------------------------------------  
-  MatrixXcd ref = MatrixXcd::Random(Nvec, Nvec);
-  MatrixXcd diagonal = MatrixXcd::Identity(Nvec, Nvec);
-  diagonal *= diag;
   
-  //Copy Eigen ref matrix.
+  //Construct a matrix using Eigen.
+  //---------------------------------------------------------------------  
+  MatrixXcd ref = MatrixXcd::Random(Nvec, Nvec);  
+  // Copy to mat
   Complex **mat = (Complex**)malloc(Nvec*sizeof(Complex*));
-  for(int i=0; i<Nvec; i++) {
-    mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
-    for(int j=0; j<Nvec; j++) {
-      mat[i][j] = ref(i,j);
-      if(hermitian) mat[i][j] += conj(ref(j,i));	
-      if(i == j) mat[i][j] += diag;
+  if(hermitian) { 
+    for(int i=0; i<Nvec; i++) {
+      mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
+      ref(i,i) = Complex(diag, 0.0);
+      mat[i][i] = ref(i,i);
+      for(int j=0; j<i; j++) {
+	mat[i][j] = ref(i,j);
+	ref(j,i) = conj(ref(i,j));
+	mat[j][i] = ref(j,i);
+      }
+    }
+  } else {  
+    for(int i=0; i<Nvec; i++) {
+      mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
+      for(int j=0; j<Nvec; j++) {
+	mat[i][j] = ref(i,j);
+      }
     }
   }
   
   //Eigensolve the matrix using Eigen, use as a reference.
   //---------------------------------------------------------------------  
   printf("START EIGEN SOLUTION\n");
-  double t1 = clock();
-  Eigen::ComplexEigenSolver<MatrixXcd> eigensolverRef;
-  if(hermitian) eigensolverRef.compute(ref + ref.adjoint() + diagonal);
-  else eigensolverRef.compute(ref); 
+  double t1 = clock();  
+  //Eigen::ComplexEigenSolver<MatrixXcd> eigensolverRef(ref);
+  //Eigen::ComplexEigenSolver<MatrixXcd> eigenSolverUH;
+  //cout << eigensolverRef.eigenvalues() << endl;
   double t2e = clock() - t1;
   printf("END EIGEN SOLUTION\n");
   printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
-  cout << eigensolverRef.eigenvalues() << endl;
   //-----------------------------------------------------------------------
 
   
   //Construct parameters and memory allocation
-  //------------------------------------------  
+  //------------------------------------------
+  
   // all FORTRAN communication uses underscored 
-  int ido_ = 0;
-  int info_ = 1;
-  int *ipntr_ = (int*)malloc(14*sizeof(int));
+  int ido_;
+  int info_;
+  int *ipntr_ = (int*)malloc(11*sizeof(int));
   int *iparam_ = (int*)malloc(11*sizeof(int));
   int n_    = Nvec,
     nev_    = nEv,
@@ -100,9 +108,8 @@ int main(int argc, char **argv) {
     ldv_    = Nvec,
     lworkl_ = (3 * nKr * nKr + 5 * nKr) * 2,
     rvec_   = 1;
-  int max_iter = max_restarts * (nKr - nEv) + nEv;
-  cout << max_iter << endl;
-  
+  int max_iter = max_restarts;
+
   double tol_ = tol;
 
   //ARPACK workspace
@@ -110,12 +117,12 @@ int main(int argc, char **argv) {
   Complex *resid_ = (Complex *) malloc(ldv_*sizeof(Complex));
   Complex *w_workd_ = (Complex *) malloc(3*ldv_*sizeof(Complex));
   Complex *w_workl_ = (Complex *) malloc(lworkl_*sizeof(Complex)); 
-  Complex *w_workev_= (Complex *) malloc(2*nkv_*sizeof(Complex));
+  Complex *w_workev_= (Complex *) malloc(3*nkv_*sizeof(Complex));
   double *w_rwork_ = (double *) malloc(nkv_*sizeof(double));    
   int *select_ = (int*)malloc(nkv_*sizeof(int));
   
-  Complex *evecs = (Complex *) malloc(nkv_*ldv_*sizeof(Complex));
-  Complex *evals = (Complex *) malloc(nev_   *sizeof(Complex));
+  Complex *evecs = (Complex *) malloc(nkv_*n_*sizeof(Complex));
+  Complex *evals = (Complex *) malloc(nkv_   *sizeof(Complex));
 
   Complex one(1.0,0.0);
   
@@ -123,7 +130,7 @@ int main(int argc, char **argv) {
     evals[n] = 0;
     for(int i=0; i<n_; i++) {
       evecs[n*n_ + i] = 0;
-      if(n==0) resid_[i] = drand48();
+      if(n==0) resid_[i] = one;
     }
   }
   
@@ -148,14 +155,11 @@ int main(int argc, char **argv) {
 
   //Assign values to ARPACK params 
   ido_        = 0;
-  info_       = 0;
+  info_       = 1;
   iparam_[0]  = 1;
   iparam_[2]  = max_iter;
   iparam_[3]  = 1;
   iparam_[6]  = 1;
-  iparam_[1]  = 0;
-  iparam_[4]  = 0;
-  iparam_[5]  = 0;
   
   //ARPACK problem type to be solved
   char howmany = 'A';
@@ -172,6 +176,11 @@ int main(int argc, char **argv) {
   Complex *psi1_cpy = (Complex*)malloc(n_*sizeof(Complex));
   Complex *psi2_cpy = (Complex*)malloc(n_*sizeof(Complex));
   
+  for(int i=0; i<n_; i++) {
+    psi1_cpy[i] = 1.0;
+    psi2_cpy[i] = 1.0;
+  }
+  
   psi1 = w_workd_;
   psi2 = w_workd_ + n_;
   
@@ -182,7 +191,8 @@ int main(int argc, char **argv) {
     
     //Interface to arpack routines
     //----------------------------
-    ARPACK(znaupd)(&ido_, &bmat, &n_, spectrum, &nev_, &tol_, resid_, &nkv_, evecs, &n_, iparam_, ipntr_, w_workd_, w_workl_, &lworkl_, w_rwork_, &info_);
+
+    ARPACK(znaupd)(&ido_, &bmat, &n_, spectrum, &nev_, &tol_, resid_, &nkv_, evecs_, &n_, iparam_, ipntr_, w_workd_, w_workl_, &lworkl_, w_rwork_, &info_);
     
     if (info_ != 0) {
       printf("\nError in dsaupd info = %d. Exiting...\n",info_);
@@ -225,7 +235,7 @@ int main(int argc, char **argv) {
     
     t1 += clock();
     time += t1;
-    printf("Arpack Iteration: %d (%e secs)\n", iter_cnt, time/(CLOCKS_PER_SEC));
+    if((iter_cnt+1)%1000 == 0) printf("Arpack Iteration: %d (%e secs)\n", iter_cnt, time/(CLOCKS_PER_SEC));
     iter_cnt++;
     
   } while (99 != ido_ && iter_cnt < max_iter);
@@ -236,8 +246,8 @@ int main(int argc, char **argv) {
   // HACK some estimates before passing to zneupd
   // Compute eigenvalues
 
-  std::vector<double> residua(nKr, 0.0);
-  std::vector<Complex> evals__(nKr, 0.0);
+  std::vector<double> residua(0.0, nKr);
+  std::vector<Complex> evals_std(0.0, nKr);
 
   //Ritz vectors and Krylov Space. The eigenvectors will be stored here.
   std::vector<Complex*> kSpace(nKr+1);
@@ -249,10 +259,10 @@ int main(int argc, char **argv) {
     }
   }
   
-  computeEvals(mat, kSpace, residua, evals__, nEv);
   
+  computeEvals(mat, kSpace, residua, evals_std, nEv);
   for (int i = 0; i < nEv; i++) {
-    printf("EigValueEstimate[%04d]: (%+.16e, %+.16e) residual %.16e\n", i, evals__[i].real(), evals__[i].imag(), residua[i]);
+    printf("EigValueEstimate[%04d]: (%+.16e, %+.16e) residual %.16e\n", i, evals[i].real(), evals_std[i].imag(), residua[i]);
   }  
 
   /*

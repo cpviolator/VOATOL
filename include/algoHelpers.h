@@ -132,15 +132,15 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
 
   if(norm_post < 1e-12 || norm_pre < 1e-12){
     printf("Congratulations! You have reached an invariant subspace at iter %d, beta_pre = %e, beta_post = %e\n", j, norm_pre, norm_post);
-    exit(0);
+    //exit(0);
   }
   
   // Orthogonalise r against the K space
   if(norm_post < 0.717*norm_pre && j > 0) {
     
     // reorthogonalise r against the K space
-    printf("beta = %e < %e: Reorthogonalise at step %d\n",
-	   norm_post, 0.717*norm_pre, j);
+    //printf("beta = %e < %e: Reorthogonalise at step %d\n",
+    //norm_post, 0.717*norm_pre, j);
     
     Complex alpha = 0.0;
     for(int i=0; i < j+1; i++) {
