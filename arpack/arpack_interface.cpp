@@ -14,7 +14,7 @@
 
 #include <arpack_interface.h>
 
-#define Nvec 512
+#define Nvec 256
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
   for(int i=0; i<Nvec; i++) {
     mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
     for(int j=0; j<Nvec; j++) {
-      mat[i][j] = ref(i,j);      
+      mat[i][j] = ref(i,j);
       if(hermitian && i == j) mat[i][j] += diag;
     }
     if(hermitian) {
@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
   //ARPACK problem type to be solved
   char howmany = 'A';
   char bmat = 'I';
-  char spectrum[3] = {'S','M'};
+  char spectrum[3] = {'L','M'};
   int iter_cnt= 0;
 
   //Start ARPACK routines
@@ -175,14 +175,6 @@ int main(int argc, char **argv) {
   Complex *psi1;
   Complex *psi2;
 
-  Complex *psi1_cpy = (Complex*)malloc(n_*sizeof(Complex));
-  Complex *psi2_cpy = (Complex*)malloc(n_*sizeof(Complex));
-  
-  for(int i=0; i<n_; i++) {
-    psi1_cpy[i] = 1.0;
-    psi2_cpy[i] = 1.0;
-  }
-  
   psi1 = w_workd_;
   psi2 = w_workd_ + n_;
   
@@ -207,18 +199,8 @@ int main(int argc, char **argv) {
     
     if (ido_ == -1 || ido_ == 1) {
 
-      //Copy from Arpack workspace
-      for(int i=0; i<n_; i++) {
-	psi1_cpy[i] = *(psi1 + i);
-      }
-
       //cout << "Apply Mat Vec input" << endl;
-      matVec(mat, psi2_cpy, psi1_cpy);
-
-      //Copy to Arpack workspace
-      for(int i=0; i<n_; i++) {
-	*(psi2 + i) = psi2_cpy[i];
-      }
+      matVec(mat, psi2, psi1);
     }
 
     t1 += clock();
@@ -246,8 +228,26 @@ int main(int argc, char **argv) {
   }
     
   computeEvals(mat, kSpace, residua, _evals, nEv);
+
+  //Compare Evalues
+  for (int i = 0; i < nEv && eigen_comp; i++) {
+    int idx = i;
+    int idx_e = Nvec - 1 - i;
+    if(hermitian) {
+      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, _evals[idx].real(), _evals[idx].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), (_evals[idx].real() - eigensolverRef.eigenvalues()[idx_e].real())/eigensolverRef.eigenvalues()[idx_e].real(), (_evals[idx].imag() - eigensolverRef.eigenvalues()[idx_e].imag()));
+    } else {
+      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, _evals[idx].real(), _evals[idx].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), (_evals[idx].real() - eigensolverRef.eigenvalues()[idx_e].real())/eigensolverRef.eigenvalues()[idx_e].real(), (_evals[idx].imag() - eigensolverRef.eigenvalues()[idx_e].imag())/eigensolverRef.eigenvalues()[idx_e].imag());
+    }
+  }
+  
   for (int i = 0; i < nEv; i++) {
-    printf("EigValueEstimate[%04d]: (%+.16e, %+.16e) residual %.16e\n", i, _evals[i].real(), _evals[i].imag(), residua[i]);
+    int idx_e = Nvec - 1 - i;
+    //if(eigen_comp) printf("EigValueEstimate[%04d]: (%+.16e, %+.16e) (%+.16e, %+.16e) residual %.16e\n", i, _evals[i].real(), _evals[i].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), residua[i]);
+    //else printf("EigValueEstimate[%04d]: (%+.16e, %+.16e) (%+.16e, %+.16e) residual %.16e\n", i, _evals[i].real(), _evals[i].imag(), residua[i]);
+  }
+  
+  for (int i = 0; i < nEv; i++) {
+    printf("VectorNorm[%04d] = %.16e\n", i, norm(kSpace[i]));
   }  
   
   printf("ARPACK Computing Eigenvlaues\n");
@@ -285,11 +285,19 @@ int main(int argc, char **argv) {
   std::vector<std::pair<Complex, int>> array(nEv);
   for(int i=0; i<nEv; i++)
     array[i] = std::make_pair(evals_[i], i);
-  
-  std::sort(array.begin(), array.begin() + nEv,
-	    [] (const pair<Complex,int> &a,
-		const pair<Complex,int> &b) {
-	      return (abs(a.first) < abs(b.first)); } );
+
+  if(spectrum[0] == 'S') {
+    std::sort(array.begin(), array.begin() + nEv,
+	      [] (const pair<Complex,int> &a,
+		  const pair<Complex,int> &b) {
+		return (abs(a.first) < abs(b.first)); });
+  } else {
+    std::sort(array.begin(), array.begin() + nEv,
+	      [] (const pair<Complex,int> &a,
+		  const pair<Complex,int> &b) {
+		return (abs(a.first) > abs(b.first)); });
+  }
+
   
   //Print eigenvalues and resdiua
   for(int i=0; i<nev_; i++){    
@@ -297,10 +305,10 @@ int main(int argc, char **argv) {
 	   evals_[array[i].second].real(), evals_[array[i].second].imag(), abs(evals_[array[i].second]), residua[array[i].second]);
     
   }
-
+  
   //Compare Evalues
   for (int i = 0; i < nEv && eigen_comp; i++) {
-    int idx = i;
+    int idx = array[i].second;
     int idx_e = Nvec - 1 - i;
     if(hermitian) {
       printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals_[idx].real(), evals_[idx].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), eigensolverRef.eigenvalues()[idx_e].real(), eigensolverRef.eigenvalues()[idx_e].imag(), (evals_[idx].real() - eigensolverRef.eigenvalues()[idx_e].real())/eigensolverRef.eigenvalues()[idx_e].real(), (evals_[idx].imag() - eigensolverRef.eigenvalues()[idx_e].imag()));

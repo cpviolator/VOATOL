@@ -118,12 +118,17 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
   matVec(mat, r[0], kSpace[j]);
 
   double norm_pre = norm(r[0]);
+
+  //H_{j,i}_j = v_i^dag * r
   for (int i = 0; i < j+1; i++) {
-    //H_{j,i}_j = v_i^dag * r
     upperHess[i][j] = cDotProd(kSpace[i], r[0]);
     //printf("upperHess[%d][%d] = (%e,%e)\n", i, j, upperHess[i][j].real(), upperHess[i][j].imag());
-    //r = r - H_{j,i} * v_j 
     caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
+  }
+  
+  //r = r - H_{j,i} * v_j 
+  for (int i = 0; i < j+1; i++) {
+    //caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
   }
   
   double norm_post = norm(r[0]);
@@ -134,21 +139,23 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
     printf("Congratulations! You have reached an invariant subspace at iter %d, beta_pre = %e, beta_post = %e\n", j, norm_pre, norm_post);
     //exit(0);
   }
-  
-  // Orthogonalise r against the K space
-  if(norm_post < 0.717*norm_pre && j > 0) {
+
+  // Orthogonalise r against the K space  
+  if(norm_post < 0.717*norm_pre) {
     
     // reorthogonalise r against the K space
-    //printf("beta = %e < %e: Reorthogonalise at step %d\n",
-    //norm_post, 0.717*norm_pre, j);
-    
-    Complex alpha = 0.0;
+    printf("beta = %e < %e: Reorthogonalise at step %d\n", norm_post, 0.717*norm_pre, j);
+    std::vector<Complex> alpha(j+1, 0.0);
     for(int i=0; i < j+1; i++) {
-      alpha = cDotProd(kSpace[i], r[0]);
-      upperHess[i][j] += alpha;
-      caxpy(-1.0*alpha, kSpace[i], r[0]);
+      //alpha[i] = dotProd(kSpace[i], r[0]);
+      alpha[i] = cDotProd(kSpace[i], r[0]);
+      upperHess[i][j] += alpha[i];
+      caxpy(-1.0*alpha[i], kSpace[i], r[0]);
     }
-    upperHess[j+1][j].real(norm(r[0]));
+    for(int i=0; i < j+1; i++) {
+      //upperHess[i][j] += alpha[i];
+      //caxpy(-1.0*alpha[i], kSpace[i], r[0]);
+    }    
   }
   
   //Prepare next step.
@@ -157,47 +164,135 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
 }
 
 #if 1
-void arnoldiStep2(Complex **mat, std::vector<Complex*> &kSpace,
-		  std::vector<Complex*> &upperHess,
-		  std::vector<Complex*> &r, double &beta, int j) {
+void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
+		       std::vector<Complex*> &upperHess,
+		       std::vector<Complex*> &r, double &beta, int j) {
 
+  //%---------------------------------------------------%
+  //| STEP 1: Check if the B norm of j-th residual      |
+  //| vector is zero. Equivalent to determine whether   |
+  //| an exact j-step Arnoldi factorization is present. |
+  //%---------------------------------------------------%
   beta = norm(r[0]);
+
   if (beta < 1e-15) {
     printf("Invariant subspace at iter %d\n", j);
     exit(0);
   }
 
-  upperHess[j+1][j].real(beta);
-  upperHess[j+1][j].imag(0.0);
-    
-  zero(kSpace[j]);
-  caxpy(1/beta, r[0], kSpace[j]);    
+  //%--------------------------------%
+  //| STEP 2:  v_{j} = r_{j-1}/rnorm |
+  //%--------------------------------%  
+  cax(1.0/beta, r[0]);
+  copy(kSpace[j], r[0]);
+  
+  //%----------------------------%
+  //| STEP 3:  r_{j} = OP*v_{j}; |
+  //%----------------------------%  
   matVec(mat, r[0], kSpace[j]);
 
-  double nrm = norm(r[0]);
-  
+  //%-------------------------------------%
+  //| The following is needed for STEP 5. |
+  //| Compute the B-norm of OP*v_{j}.     |
+  //%-------------------------------------%
+
+  double wnorm = norm(r[0]);
+
+  //%-----------------------------------------%
+  //| Compute the j-th residual corresponding |
+  //| to the j step factorization.            |
+  //| Use Classical Gram Schmidt and compute: |
+  //| w_{j} <-  V_{j}^T * B * OP * v_{j}      |
+  //| r_{j} <-  OP*v_{j} - V_{j} * w_{j}      |
+  //%-----------------------------------------%
+
+  //%------------------------------------------%
+  //| Compute the j Fourier coefficients w_{j} |
+  //| WORKD(IPJ:IPJ+N-1) contains B*OP*v_{j}.  |
+  //%------------------------------------------%
+  //H_{j,i}_j = v_i^dag * r
   for (int i = 0; i < j+1; i++) {
-    //H_{j,i}_j = v_i^dag * r
     upperHess[i][j] = cDotProd(kSpace[i], r[0]);
-    //printf("upperHess[%d][%d] = (%e,%e)\n", i, j, upperHess[i][j].real(), upperHess[i][j].imag());
-    //r = r - H_{j,i} * v_j 
+    //printf("upperHess[%d][%d] = (%e,%e)\n", i, j, upperHess[i][j].real(), upperHess[i][j].imag());  
+  }  
+  //%--------------------------------------%
+  //| Orthogonalize r_{j} against V_{j}.   |
+  //| RESID contains OP*v_{j}. See STEP 3. | 
+  //%--------------------------------------%
+  //r = r - H_{j,i} * v_j 
+  for (int i = 0; i < j+1; i++) {
     caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
   }
   
+  if(j > 0) upperHess[j][j-1] = beta;
+  
   beta = norm(r[0]);
   
-  if(beta < 0.717*nrm && j > 0) {
+  //%-----------------------------------------------------------%
+  //| STEP 5: Re-orthogonalization / Iterative refinement phase |
+  //| Maximum NITER_ITREF tries.                                |
+  //|                                                           |
+  //|          s      = V_{j}^T * B * r_{j}                     |
+  //|          r_{j}  = r_{j} - V_{j}*s                         |
+  //|          alphaj = alphaj + s_{j}                          |
+  //|                                                           |
+  //| The stopping criteria used for iterative refinement is    |
+  //| discussed in Parlett's book SEP, page 107 and in Gragg &  |
+  //| Reichel ACM TOMS paper; Algorithm 686, Dec. 1990.         |
+  //| Determine if we need to correct the residual. The goal is |
+  //| to enforce ||v(:,1:j)^T * r_{j}|| .le. eps * || r_{j} ||  |
+  //| The following test determines whether the sine of the     |
+  //| angle between  OP*x and the computed residual is less     |
+  //| than or equal to 0.717.                                   |
+  //%-----------------------------------------------------------%
+
+  int orth_iter = 0;
+  int orth_iter_max = 100;
+  while(beta < 0.717*wnorm && orth_iter < orth_iter_max) {
+    
+    //%---------------------------------------------------%
+    //| Enter the Iterative refinement phase. If further  |
+    //| refinement is necessary, loop back here. The loop |
+    //| variable is ITER. Perform a step of Classical     |
+    //| Gram-Schmidt using all the Arnoldi vectors V_{j}  |
+    //%---------------------------------------------------%
+
+
+    //%---------------------------------------------%
+    //| Compute the correction to the residual:     |
+    //| r_{j} = r_{j} - V_{j} * WORKD(IRJ:IRJ+J-1). |
+    //| The correction to H is v(:,1:J)*H(1:J,1:J)  |
+    //| + v(:,1:J)*WORKD(IRJ:IRJ+J-1)*e'_j.         |
+    //%---------------------------------------------%
+
+    wnorm = beta;
+    
     // reorthogonalise r against the K space
-    printf("beta = %e < %e: Reorthogonalise at step %d\n", beta, 0.717*nrm, j);
-    Complex alpha = 0.0;
+    printf("beta = %e < %e: Reorthogonalise at step %d\n", beta, 0.717*wnorm, j);
+    std::vector<Complex> alpha(j+1, 0.0);
     for(int i=0; i < j+1; i++) {
-      alpha = cDotProd(kSpace[i], r[0]);
-      upperHess[i][j] += alpha;
-      caxpy(-1.0*alpha, kSpace[i], r[0]);
+      alpha[i] = cDotProd(kSpace[i], r[0]);
     }
+    for(int i=0; i < j+1; i++) {
+      caxpy(-1.0*alpha[i], kSpace[i], r[0]);
+    }
+    for(int i=0; i < j+1; i++) {
+      upperHess[i][j] += alpha[i];
+    }
+    
     beta = norm(r[0]);
+    orth_iter++;
+  }
+  
+  if(orth_iter == orth_iter_max) {
+    //%---------------------------------------%
+    //| RESID is numerically in the span of V |
+    //%---------------------------------------%
+    cout << "Unable to orthonormalise r" << endl;
+    exit(0);
   }
 }
+
 #endif
 
 

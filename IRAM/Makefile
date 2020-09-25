@@ -1,19 +1,18 @@
 #Your path to Eigen
-EIGEN=/Users/deanhowarth/Eigen
-#SPECTRA=/Users/deanhowarth/spectra
+EIGEN=../../../Eigen
 INCLUDE=../include
 
 TARGET	 = iram 
 SOURCES  = iram.cpp 
 OBJS     = iram.o
-INC      = $(addprefix ${INCLUDE}/, linAlgHelpers.h algoHelpers.h)
-LIBS     = -L/usr/local/opt/libomp/lib -lomp
+INC      = $(addprefix ${INCLUDE}/, linAlgHelpers.h algoHelpers.h lapack.h)
+#LIBS     = -L/usr/local/opt/libomp/lib -lomp
 
 ERRS=-Wall
 
 CXX = g++
-CXXFLAGS = -O3 -g ${ERRS} -std=c++11 -I${EIGEN} -I${INCLUDE} #-I${SPECTRA}/include 
-OMPFLAGS = -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
+CXXFLAGS = -O3 -g ${ERRS} -std=c++11 -I${EIGEN} -I${INCLUDE} 
+#OMPFLAGS = -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
 CXXFLAGS+=${OMPFLAGS}
 
 #============================================================

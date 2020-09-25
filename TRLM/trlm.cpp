@@ -120,13 +120,8 @@ int main(int argc, char **argv) {
   std::vector<Complex*> r(1);
   r[0] = (Complex*)malloc(Nvec*sizeof(Complex));
   zero(r[0]);
-  // Implictly Restarted Lanczos Method for Symmetric Eigenvalue Problems
-  // Algorithm 4.7
-  // http://www.netlib.org/utk/people/JackDongarra/etemplates/node118.html
-  // Step n in the algorithm are denoted by (n) in the code.
-  //----------------------------------------------------------------------
-
-  printf("START LANCZOS SOLUTION\n");
+  
+  printf("START THICK RESTARTED LANCZOS SOLUTION\n");
 
   double epsilon = DBL_EPSILON;
   double mat_norm = 0.0;

@@ -14,7 +14,7 @@
 
 #include <arpack_interface.h>
 
-#define Nvec 512
+#define Nvec 1024
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
