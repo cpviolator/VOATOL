@@ -14,7 +14,7 @@
 
 #include <arpack_interface.h>
 
-#define Nvec 256
+#define Nvec 8192
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
   //ARPACK problem type to be solved
   char howmany = 'A';
   char bmat = 'I';
-  char spectrum[3] = {'L','M'};
+  char spectrum[3] = {'S','M'};
   int iter_cnt= 0;
 
   //Start ARPACK routines

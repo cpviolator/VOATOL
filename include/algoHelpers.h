@@ -165,7 +165,7 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
 
 #if 1
 void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
-		       std::vector<Complex*> &upperHess,
+		       Eigen::MatrixXcd &upperHessEigen,
 		       std::vector<Complex*> &r, double &beta, int j) {
 
   //%---------------------------------------------------%
@@ -174,11 +174,6 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
   //| an exact j-step Arnoldi factorization is present. |
   //%---------------------------------------------------%
   beta = norm(r[0]);
-
-  if (beta < 1e-15) {
-    printf("Invariant subspace at iter %d\n", j);
-    exit(0);
-  }
 
   //%--------------------------------%
   //| STEP 2:  v_{j} = r_{j-1}/rnorm |
@@ -212,19 +207,19 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
   //%------------------------------------------%
   //H_{j,i}_j = v_i^dag * r
   for (int i = 0; i < j+1; i++) {
-    upperHess[i][j] = cDotProd(kSpace[i], r[0]);
-    //printf("upperHess[%d][%d] = (%e,%e)\n", i, j, upperHess[i][j].real(), upperHess[i][j].imag());  
-  }  
+    upperHessEigen(i,j) = cDotProd(kSpace[i], r[0]);
+  }
+  
   //%--------------------------------------%
   //| Orthogonalize r_{j} against V_{j}.   |
   //| RESID contains OP*v_{j}. See STEP 3. | 
   //%--------------------------------------%
   //r = r - H_{j,i} * v_j 
   for (int i = 0; i < j+1; i++) {
-    caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
+    caxpy(-1.0*upperHessEigen(i,j), kSpace[i], r[0]);
   }
   
-  if(j > 0) upperHess[j][j-1] = beta;
+  if(j > 0) upperHessEigen(j,j-1) = beta;
   
   beta = norm(r[0]);
   
@@ -257,7 +252,6 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
     //| Gram-Schmidt using all the Arnoldi vectors V_{j}  |
     //%---------------------------------------------------%
 
-
     //%---------------------------------------------%
     //| Compute the correction to the residual:     |
     //| r_{j} = r_{j} - V_{j} * WORKD(IRJ:IRJ+J-1). |
@@ -268,16 +262,15 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
     wnorm = beta;
     
     // reorthogonalise r against the K space
-    printf("beta = %e < %e: Reorthogonalise at step %d\n", beta, 0.717*wnorm, j);
+    //printf("beta = %e < %e: Reorthogonalise at step %d, iter %d\n", beta, 0.717*wnorm, j, orth_iter);
     std::vector<Complex> alpha(j+1, 0.0);
     for(int i=0; i < j+1; i++) {
       alpha[i] = cDotProd(kSpace[i], r[0]);
+      upperHessEigen(i,j) += alpha[i];
     }
+    
     for(int i=0; i < j+1; i++) {
       caxpy(-1.0*alpha[i], kSpace[i], r[0]);
-    }
-    for(int i=0; i < j+1; i++) {
-      upperHess[i][j] += alpha[i];
     }
     
     beta = norm(r[0]);
@@ -510,20 +503,16 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
 } 
 
 int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int nKr, int num_locked)
-{  
+{
   int dim = nKr - num_locked;
-  for(int k=0; k<dim; k++) {
-    for(int i=0; i<dim; i++) {
-      Rmat(k,i) = upperHess(k,i);
+  for(int i=0; i<dim; i++) {
+    for(int j=0; j<dim; j++) {
+      Rmat(i,j) = upperHess(i,j);
     }
   }
-
+  
   Eigen::ComplexSchur<MatrixXcd> schurUH;
-  schurUH.compute(Rmat);  
-  //cout << schurUH.matrixT() << endl << endl;
-  //cout << schurUH.matrixU() << endl << endl;
-  //cout << Rmat << endl << endl;
-  //cout << schurUH.matrixU() * schurUH.matrixT() * schurUH.matrixU().adjoint() << endl << endl;
+  schurUH.compute(Rmat);
   
   double tol = 1e-15;
   Complex temp, disc, dist1, dist2, eval;
@@ -559,16 +548,13 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int 
 	eval = dist2 + Rmat(k+1, k+1);
       
       // Shift H with the eigenvalue
-      for(int i = 0; i < dim; i++) {
-	Rmat(i, i) -= eval;
-      }
+      for(int i = 0; i < dim; i++) Rmat(i, i) -= eval;
       
       // Do the QR iteration
       qriteration(Rmat, Qmat, dim);
       
       // Shift H back
-      for(int i = 0; i < dim; i++)
-	Rmat(i, i) += eval;
+      for(int i = 0; i < dim; i++) Rmat(i, i) += eval;
       
       iter++;    
     } 
@@ -576,12 +562,6 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int 
   
   printf("eigensystem iterations = %d\n", iter);
 
-  //cout << Rmat << endl << endl;
-  //cout << Qmat << endl << endl;
-  //cout << Qmat * Rmat << endl << endl;
-  
-  //for(int i=0; i<dim; i++) cout << Rmat(i,i) << endl;
-  
   return iter;  
 }
 
