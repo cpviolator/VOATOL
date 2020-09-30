@@ -136,10 +136,8 @@ int main(int argc, char **argv) {
   int iter = 0;
   int restart_iter = 0;
   int iter_converged = 0;
-  int iter_locked = 0;
   int iter_keep = 0;
   int num_converged = 0;
-  int num_locked = 0;
   int num_keep = 0;
   
   // Populate source with randoms.
@@ -219,7 +217,6 @@ int main(int argc, char **argv) {
 	break;
       }
     }    
-    printf("%04d converged eigenvalues at iter %d\n", num_converged, restart_iter);
 
     //       %---------------------------------------------------------%
     //       | Count the number of unwanted Ritz values that have zero |
@@ -233,13 +230,9 @@ int main(int argc, char **argv) {
 
     
     int nshifts0 = nshifts;
-    iter_locked = 0;
     for(int i=0; i<nshifts0; i++) {
       if(residua[i] <= epsilon) {
-	cout << "Possible lock at residual[" << i << "] = " << residua[i] << endl;; 
 	nshifts--;
-	//num_keep++;
-	iter_locked++;
       }
     }
     
@@ -247,39 +240,32 @@ int main(int argc, char **argv) {
       cout << "No shifts can be applied" << endl;
       exit(0);
     }    
+
+    int num_keep0 = num_keep;
+    iter_keep = std::min(iter_converged + (nKr - num_converged) / 2, nKr - 12);
+    
+    num_converged = iter_converged;
+    num_keep = iter_keep;      
+    nshifts = nKr - num_keep;
+
+    printf("%04d converged eigenvalues at iter %d\n", num_converged, restart_iter);
     
     if (num_converged >= nEv || nEv == Nvec) {
       converged = true;
+      // Compute Eigenvalues
+      eigenSolverUH.compute(upperHessEigen);
+      rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors(), 0, nKr, nKr);
+      computeEvals(mat, kSpace, residua, evals, nKr);
+      
     } else if (restart_iter < max_restarts) {
       
       //          %-------------------------------------------------%
       //          | Do not have all the requested eigenvalues yet.  |
       //          | To prevent possible stagnation, adjust the size |
       //          | of NEV.                                         |
+      //          | If the size of NEV was just increased resort    |
+      //          | the eigenvalues.                                |
       //          %-------------------------------------------------%
-
-      int num_keep0 = num_keep;
-      //num_locked += iter_locked;
-      num_locked = 0;
-      iter_keep = std::min(iter_converged + (nKr - num_converged) / 2, nKr - num_locked - 12);
-
-      num_converged = num_locked + iter_converged;
-      num_keep = num_locked + iter_keep;
-      //num_locked += iter_locked;
-      
-      //num_keep += num_locked + std::min(num_converged, nshifts/2);
-      //if(num_keep == 1 && nKr >= 6) num_keep = nKr/2;
-      //else if(num_keep == 1 && nKr > 3) num_keep = 2;
-      nshifts = nKr - num_keep;
-      if(num_keep + nshifts != nKr) {
-	cout << "Uh oh....." << endl;
-	exit(0);
-      }
-      
-      //          %---------------------------------------%
-      //          | If the size of NEV was just increased |
-      //          | resort the eigenvalues.               |
-      //          %---------------------------------------%
 
       if(num_keep0 < num_keep) {
 	// Emulate zngets: sort the unwanted Ritz to the start of the arrays, then
@@ -292,8 +278,7 @@ int main(int argc, char **argv) {
 	// Sort to put smallest Ritz errors(residua) first
 	zsortc(0, nshifts, residua, evals);    
       }
-      
-      
+     
       //       %---------------------------------------------------------%
       //       | Apply the NP implicit shifts by QR bulge chasing.       |
       //       | Each shift is applied to the whole upper Hessenberg     |
@@ -302,36 +287,26 @@ int main(int argc, char **argv) {
 
       // Emulate znapps
       MatrixXcd Qmat = MatrixXcd::Identity(dim, dim);
-      switch(qr_type) {
-      case 0:
-	//znapps(num_keep, nshifts, evals, upperHessEigen, Qmat);
-	for(int j=0; j<nshifts; j++) {      
-	  givensQRUpperHess(upperHessEigen, Qmat, dim, nshifts, j, num_keep, evals[j], restart_iter);
-	}
-	break;
-      case 1: 
-
-	MatrixXcd sigma = MatrixXcd::Identity(dim, dim);
-	for(int i=0; i<nshifts; i++){
-	  
-	  if(verbose) cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	  
-	  sigma.setIdentity();
-	  sigma *= evals[i];
-	  if(verbose) printf("Projecting out ||(%e,%e)|| = %e\n", evals[i].real(), evals[i].imag(), abs(evals[nshifts + i]));
-	  upperHessEigen -= sigma;
-	  qriteration(upperHessEigen, Qmat, dim);	
-	  upperHessEigen += sigma;
-	  
-	  if(verbose) {
-	    cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	    MatrixXcd Id = MatrixXcd::Identity(dim, dim);
-	    cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
-	  }
+      MatrixXcd sigma = MatrixXcd::Identity(dim, dim);
+      for(int i=0; i<nshifts; i++){
+	
+	if(verbose) cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
+	
+	sigma.setIdentity();
+	sigma *= evals[i];
+	if(verbose) printf("Projecting out ||(%e,%e)|| = %e\n", evals[i].real(), evals[i].imag(), abs(evals[nshifts + i]));
+	upperHessEigen -= sigma;
+	qriteration(upperHessEigen, Qmat, dim);	
+	upperHessEigen += sigma;
+	
+	if(verbose) {
+	  cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
+	  MatrixXcd Id = MatrixXcd::Identity(dim, dim);
+	  cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
 	}
       }
       
-      rotateVecsComplex(kSpace, Qmat, num_locked, num_keep+1, dim);
+      rotateVecsComplex(kSpace, Qmat, 0, num_keep+1, dim);
       
       //    %-------------------------------------%
       //    | Update the residual vector:         |
@@ -373,7 +348,6 @@ int main(int argc, char **argv) {
 	upperHessEigen(num_keep, num_keep-1).real(normalise(r[0]));
 	
 	copy(kSpace[num_keep], r[0]);
-	//exit(0);
       }
 #endif
       
@@ -389,10 +363,6 @@ int main(int argc, char **argv) {
     printf("IRAM computed the requested %d vectors with a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nEv, nKr, restart_iter, iter, t2l/CLOCKS_PER_SEC);    
   }
   
-  // Compute Eigenvalues
-  eigenSolverUH.compute(upperHessEigen);
-  rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors(), 0, nKr, nKr);
-  computeEvals(mat, kSpace, residua, evals, nKr);
   for (int i = 0; i < nEv; i++) {
     int idx = (reverse ? i : nKr - 1 - i);
     printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);

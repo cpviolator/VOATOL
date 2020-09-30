@@ -1,5 +1,5 @@
 #Your path to Eigen
-EIGEN=../../../Eigen
+EIGEN=../../Eigen
 INCLUDE=../include
 
 TARGET	 = iram 
