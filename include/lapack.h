@@ -1018,9 +1018,9 @@ void givensQRUpperHess(Eigen::MatrixXcd &UH, Eigen::MatrixXcd &Q, int nKr,
 
 //SUBROUTINE ZLAHQR( WANTT, WANTZ, N, ILO, IHI, H, LDH, W, ILOZ, IHIZ, Z, LDZ, INFO )
 //zlahqr(true, true, n, 0, n, upperHessTemp, ldh, ritz, 0, n, Q, ldq);
-    /*
+
 void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
-	    Eigen::MatrixXcd &UH, int LDH, Complex *ritz,
+	    Eigen::MatrixXcd &UH, int LDH, std::vector<Complex> ritz,
 	    int ILOZ, int IHIZ, Eigen::MatrixXcd &Q, int IDQ) {
   
   Complex cZero(0.0,0.0);
@@ -1069,7 +1069,7 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
                  // Careful with this one. A matrix in f77 with
                  // M(IHI,IHI) is valid. 
   //10 continue
-  cout << "ILO = " << ILO << " IHI = " << IHI << " i = " << i << endl;
+  //cout << "ILO = " << ILO << " IHI = " << IHI << " i = " << i << endl;
   while(i >= ILO) {
     
     //for(int w=0; w<LDH; w++) cout << "zlahqr ritz = " << ritz[i] << endl;
@@ -1082,23 +1082,23 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
     bool lgei = false;
     for(ITS = 0; ITS < ITN && !lgei; ITS++) {
 
-      cout << "Start iteration " << ITS << endl;
+      cout << "Start iteration " << ITS << " ILO = " << ILO << endl;
       
       //Look for a single small subdiagonal element.
       for(k = i; k >= l + 1; k--) {
 	TST1 = cabs1( UH(k-1, k-1) ) + cabs1( UH(k, k));
 	if(TST1 == 0.0) {
-	  cout << " *** TST1 hit "<< endl; 
-	  TST1 = zlanhs(UH, LDH);
+	  //cout << " *** TST1 hit "<< endl; 
+	  TST1 = zlanhs(UH);
 	}
 	if(abs(UH(k, k-1).real()) <= std::max(ULP*TST1, SMLNUM)) {
-	  cout << " goto 30 hit "<< endl; 
+	  //cout << " goto 30 hit "<< endl; 
 	  continue;
 	}
       }
 
       l = k;
-      cout << "ONE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
+      //cout << "ONE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
       if (l > ILO) {
 	//UH(L,L-1) is negligible
 	UH(l, l-1) = cZero;
@@ -1145,7 +1145,7 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
       bool goto50 = false;
       for(m = i - 1; m >= l + 1 && !goto50; m--) {
 
-	cout << "TWO k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
+	//cout << "TWO k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
 	
 	//Determine the effect of starting the single-shift QR
 	//iteration at row M, and see if this would make H(M,M-1)
@@ -1183,12 +1183,12 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
 	V[1] = H21;
       }
 
-      cout << "THREE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
+      //cout << "THREE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
       
       //Single-shift QR step
       for(k = m; k < i; k++) {
 
-	cout << "FOUR k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
+	//cout << "FOUR k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
 	
 	//The first iteration of this loop determines a reflection G
 	//from the vector V and applies it from left and right to H,
@@ -1232,7 +1232,7 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
 	for( int j = I1; j < std::min(k+2+1, i); j++) {
 	  SUM = T1 * UH(j,k) + T2 * UH(j,k+1);
 	  UH(j,k) -= SUM;
-	    UH(j,k+1) -= SUM*conj(V2);
+	  UH(j,k+1) -= SUM*conj(V2);
 	}
 	
 	if( WANTZ ) {	    
@@ -1269,7 +1269,7 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
 	}
       }
 
-      cout << "FIVE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
+      //cout << "FIVE k="<<k<<" m="<<m<<" l="<<l<<" i="<<i<<endl;
       //Ensure that UH(I,I-1) is real.      
       TEMP = UH(i, i-1);
       if( TEMP.imag() != 0.0 ) {
@@ -1283,4 +1283,3 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
     }
   }
 }
-    */

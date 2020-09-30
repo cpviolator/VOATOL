@@ -12,8 +12,11 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 128
+#define Nvec 1024
+#define EIGEN_USE_LAPACKE
 #include "Eigen/Eigenvalues"
+#include "Eigen/Dense"
+
 using namespace std;
 using Eigen::MatrixXcd;
 using Eigen::MatrixXd;
@@ -43,9 +46,10 @@ int main(int argc, char **argv) {
   bool symm = (atoi(argv[9]) == 1 ? true : false);
   bool verbose = (atoi(argv[10]) == 1 ? true : false);
   bool eigen_check = (atoi(argv[11]) == 1 ? true : false);
-  //omp_set_num_threads(threads);
+  omp_set_num_threads(threads);
   Eigen::setNbThreads(threads);
 
+  int CLOCKS_PER_CORE = threads*CLOCKS_PER_SEC;
   
   if (!(nKr > nEv + 6)) {
     printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
@@ -95,7 +99,7 @@ int main(int argc, char **argv) {
     for(int i=0; i<Nvec; i++) {
       printf("(%e, %e) %.16e\n", eigenSolver.eigenvalues()[i].real(), eigenSolver.eigenvalues()[i].imag(), abs(eigenSolver.eigenvalues()[i]) );
     }
-    printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
+    printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_CORE);
   }
   //-----------------------------------------------------------------------
 
@@ -154,34 +158,60 @@ int main(int argc, char **argv) {
   copy(r[0], kSpace[0]);
   
   t1 = clock();
+  double t_eig_dense = 0;
+  double t_qr_dense = 0;
+  int dense_call = 0;
+  int qr_call = 0;
   
   // START IRAM
   // Implicitly restarted Arnoldi method for asymmetric eigenvalue problems
   //----------------------------------------------------------------------
 
   // Do the first nEv steps
+
   for (int step = 0; step < nEv; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
   num_keep = nEv;
   iter += nEv;
-  
+  double t_step = clock() - t1;  
   // Loop over restart iterations.
   while(restart_iter < max_restarts && !converged) {
 
+    t1 = clock();
     for (int step = num_keep; step < nKr; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
-
+    t_step += clock() - t1;
+    
     iter += (nKr - num_keep);
-    printf("Restart %d complete\n", restart_iter+1);
+    if(verbose) printf("Restart %d complete\n", restart_iter+1);
 
     // Construct objects for Ritz and bounds
     int dim = nKr;
-    
+
+    t1 = clock();
+    dense_call++;
     // Compute Ritz and bounds
-    eigenSolverUH.compute(upperHessEigen); 
+    
+    /*    
+    eigenSolverUH.compute(upperHessEigen);
     for(int i=0; i<dim; i++) {
       evals[i] = eigenSolverUH.eigenvalues()[i];	
       residua[i] = abs(beta * eigenSolverUH.eigenvectors().col(i)[dim-1]);
     }
+    */
     
+    MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
+    MatrixXcd Qmat = MatrixXcd::Identity(nKr, nKr);
+    for(int i=0; i<nKr; i++)
+      for(int j=0; j<nKr; j++) Rmat(i,j) = upperHessEigen(i,j);
+    
+    zlahqr(true, true, nKr, 0, nKr, Rmat, nKr, evals, 0, nKr, Qmat, nKr);
+    //qrFromUpperHess(upperHessEigen, Qmat, Rmat, nKr);
+    
+    for(int i=0; i<dim; i++) {
+      evals[i] = Rmat(i,i);	
+      residua[i] = abs(beta * Qmat.col(i)[dim-1]);
+    }    
+    
+    t_eig_dense += clock() - t1;
     num_keep = nEv;    
     int nshifts = nKr - num_keep;
     
@@ -192,9 +222,9 @@ int main(int argc, char **argv) {
       cout << endl;
     }
     // Sort to put unwanted Ritz(evals) first
-    if(reverse) zsortc(1, dim, evals, residua);
-    else zsortc(0, dim, evals, residua);
-    //zsortc(spectrum, dim, evals, residua);
+    //if(reverse) zsortc(1, dim, evals, residua);
+    //else zsortc(0, dim, evals, residua);
+    zsortc(spectrum, dim, evals, residua);
     
     // Sort to put smallest Ritz errors(residua) first
     zsortc(0, nshifts, residua, evals);
@@ -286,9 +316,10 @@ int main(int argc, char **argv) {
 	// sort the first (nKr - nEv) bounds to be first for forward stability
 	
 	// Sort to put unwanted Ritz(evals) first
-	if(reverse) zsortc(1, dim, evals, residua);
-	else zsortc(0, dim, evals, residua);
-
+	//if(reverse) zsortc(1, dim, evals, residua);
+	//else zsortc(0, dim, evals, residua);
+	zsortc(spectrum, dim, evals, residua);
+	
 	// Sort to put smallest Ritz errors(residua) first
 	zsortc(0, nshifts, residua, evals);    
       }
@@ -311,6 +342,8 @@ int main(int argc, char **argv) {
 	break;
       case 1: 
 
+	t1 = clock();    
+	
 	MatrixXcd sigma = MatrixXcd::Identity(dim, dim);
 	for(int i=0; i<nshifts; i++){
 	  
@@ -329,6 +362,8 @@ int main(int argc, char **argv) {
 	    cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
 	  }
 	}
+	qr_call++;
+	t_qr_dense += clock() - t1;
       }
       
       rotateVecsComplex(kSpace, Qmat, num_locked, num_keep+1, dim);
@@ -386,7 +421,7 @@ int main(int argc, char **argv) {
   if (!converged) {    
     printf("IRAM failed to compute the requested %d vectors with a %d Krylov space in %d restart_steps and %d OPs\n", nEv, nKr, restart_iter, iter);
   } else {
-    printf("IRAM computed the requested %d vectors with a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nEv, nKr, restart_iter, iter, t2l/CLOCKS_PER_SEC);    
+    printf("IRAM computed the requested %d vectors with a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nEv, nKr, restart_iter, iter, t2l/CLOCKS_PER_CORE);    
   }
   
   // Compute Eigenvalues
@@ -398,11 +433,17 @@ int main(int argc, char **argv) {
     printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);
   }
 
+  cout << "time step = " << t_step/CLOCKS_PER_CORE << endl;
+  cout << "time eig dense = " << t_eig_dense/(CLOCKS_PER_CORE*dense_call) << " per call" << endl;
+  cout << "time qr dense = " << t_qr_dense/(CLOCKS_PER_CORE*qr_call) << " per call" << endl;
+  cout << "time total = " << (t_eig_dense+t_step+t_qr_dense)/CLOCKS_PER_CORE << endl;
+
+  
   for (int i = 0; i < nEv; i++) {
     int idx = (reverse ? i : nKr - 1 - i);
     //printf("VectorNorm[%04d] = %.8e\n", i, norm(kSpace[idx]));
   }
-    
+  
   if(eigen_check) {
     for (int i = 0; i < nEv; i++) {
       int idx = (reverse ? i : nKr - 1 - i);

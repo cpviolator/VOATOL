@@ -502,17 +502,17 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
   free(R22);
 } 
 
-int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int nKr, int num_locked)
+int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int nKr)
 {
-  int dim = nKr - num_locked;
+  int dim = nKr;
   for(int i=0; i<dim; i++) {
     for(int j=0; j<dim; j++) {
       Rmat(i,j) = upperHess(i,j);
     }
   }
   
-  Eigen::ComplexSchur<MatrixXcd> schurUH;
-  schurUH.compute(Rmat);
+  //Eigen::ComplexSchur<MatrixXcd> schurUH;
+  //schurUH.compute(Rmat);
   
   double tol = 1e-15;
   Complex temp, disc, dist1, dist2, eval;
@@ -561,7 +561,12 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int 
   }
   
   printf("eigensystem iterations = %d\n", iter);
-
+  
+  // Rmat is now upper triangular. Eigensolve
+  //Eigen::ComplexEigenSolver<MatrixXcd> eigensolver(Rmat);  
+  //Qmat = Qmat * eigensolver.eigenvectors();
+  //for(int i=0; i<dim; i++) Rmat(i,i) = eigensolver.eigenvalues()[i];
+  
   return iter;  
 }
 

@@ -51,16 +51,16 @@ void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 
 Complex dotProd(Complex *x, Complex *y) {
   Complex prod = 0.0;
-#pragma omp parallel for reduction(+:prod) 
+  //#pragma omp parallel for reduction(+:prod) 
   for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
   return prod;
 }
 
 Complex cDotProd(const Complex *x, const Complex *y) {
-  Complex prod = 0.0;
-#pragma omp parallel for reduction(+:prod) 
-  for(int i=0; i<Nvec; i++) prod += conj(x[i])*y[i];
-  return prod;
+  Complex sum = 0.0;
+  //#pragma omp parallel for reduction(+:sum) 
+  for(int i=0; i<Nvec; i++) sum += conj(x[i])*y[i];
+  return sum;
 }
 
 double norm2(Complex *x) {
