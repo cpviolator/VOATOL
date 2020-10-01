@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 128
+#define Nvec 1024
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -62,32 +62,26 @@ int main(int argc, char **argv) {
   //Construct a matrix using Eigen.
   //---------------------------------------------------------------------  
   MatrixXcd ref = MatrixXcd::Random(Nvec, Nvec);
-  MatrixXcd Diag = MatrixXcd::Zero(Nvec, Nvec);
-  
-  // Make ref Hermitian  
-  for(int i=0; i<Nvec; i++) {
-    Diag(i,i) = Complex(diag, 0.0);
-  }
+  MatrixXcd diagonal = MatrixXcd::Zero(Nvec, Nvec);
+  diagonal *= diag;  
   
   // Copy to mat
   Complex **mat = (Complex**)malloc(Nvec*sizeof(Complex*));
   for(int i=0; i<Nvec; i++) {
     mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
-    ref(i,i) = Complex(diag, 0.0);
-    mat[i][i] = ref(i,i);
-    for(int j=0; j<i; j++) {
+    for(int j=0; j<Nvec; j++) {
       mat[i][j] = ref(i,j);
-      ref(j,i) = conj(ref(i,j));
-      mat[j][i] = ref(j,i);
+      mat[i][j] += conj(ref(j,i));	
+      if(i == j) mat[i][j] += diag;
     }
   }
-  
+    
   //Eigensolve the matrix using Eigen, use as a reference.
   //---------------------------------------------------------------------  
   printf("START EIGEN SOLUTION\n");
   double t1 = clock();  
-  //Eigen::SelfAdjointEigenSolver<MatrixXcd> eigensolverRef(ref);
-  //cout << eigensolverRef.eigenvalues() << endl;
+  Eigen::SelfAdjointEigenSolver<MatrixXcd> eigensolverRef(ref);
+  cout << eigensolverRef.eigenvalues() << endl;
   double t2e = clock() - t1;
   printf("END EIGEN SOLUTION\n");
   printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_SEC);
@@ -220,6 +214,8 @@ int main(int argc, char **argv) {
     // Check for convergence
     if (num_converged >= nEv) {
       reorder(kSpace, alpha, nKr, reverse);
+      computeEvals(mat, kSpace, residua, evals, nKr);
+      for(int i=0; i<nEv; i++) evals[i] -= diag;
       converged = true;
     }
     
@@ -244,7 +240,6 @@ int main(int argc, char **argv) {
     }
     
     // Compute eigenvalues
-    computeEvals(mat, kSpace, residua, evals, nKr);
     for (int i = 0; i < nKr; i++) alpha[i] = evals[i].real();
     //reorder(kSpace, alpha, nEv, reverse);
     for (int i = 0; i < nEv; i++) {

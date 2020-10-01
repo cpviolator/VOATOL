@@ -467,108 +467,74 @@ double eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
   }  
 }
 
-void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
+void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int nKr)
 {  
-  Complex T11, T12, T21, T22, temp, temp2, temp3, U1, U2;
+  Complex T11, T12, T21, T22, U1, U2;
   double dV;
 
-  double tol = 1e-15;
+  double tol = 1e-12;
   
   // Allocate the rotation matrices.
-  Complex *R11 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R12 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R21 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R22 = (Complex*) malloc((dim-1)*sizeof(Complex));
+  std::vector<Complex> R11(nKr-1);
+  std::vector<Complex> R12(nKr-1);
+  std::vector<Complex> R21(nKr-1);
+  std::vector<Complex> R22(nKr-1);
 
   // First pass, determine the matrices and do H -> R.
-  for(int i = 0; i < dim-1; i++) {
+  for(int i = 0; i < nKr-1; i++) {
     if (abs(Rmat(i+1, i)) < tol) {
-      R11[i] = R12[i] = R21[i] = R22[i] = 0;
-      Rmat(i+1, i) = 0;
+      R11[i] = R12[i] = R21[i] = R22[i] = 0.0;
+      Rmat(i+1, i) = 0.0;
       continue;
     }
     
     dV = sqrt(norm(Rmat(i, i)) + norm(Rmat(i+1, i)));
     U1 = Rmat(i, i);
-    dV = (U1.real() > 0) ? dV : -dV;
+    dV = (U1.real() > 0.0) ? dV : -dV;
     U1 += dV;
     U2 = Rmat(i+1, i);
         
-    T11 = conj(U1);
-    T11 /= dV;
+    T11 = conj(U1) / dV;
     R11[i] = conj(T11);
 
-    T12 = conj(U2);
-    T12 /= dV;
+    T12 = conj(U2) / dV;
     R12[i] = conj(T12);
     
-    T21 = conj(T12);
-    temp = conj(U1);
-    temp /= U1;
-    T21 *= temp;
+    T21 = conj(T12) * conj(U1) / U1;
     R21[i] = conj(T21);
 
-    temp = U2 / U1;
-    T22 = T12 * temp;
+    T22 = T12 * U2 / U1;
     R22[i] = conj(T22);
 
-    // Do the H_kk and set the H_k+1k to zero
-    temp = Rmat(i, i);
-    temp2 = T11 * temp;
-    temp3 = T12 * Rmat(i+1, i);
-    temp2 += temp3;
-    Rmat(i, i) -= temp2;
+    Rmat(i, i) -= (T11 * Rmat(i, i) + T12 * Rmat(i+1, i));
     Rmat(i+1, i) = 0;
     
-    // Continue for the other columns
 #pragma omp parallel for
-    for(int j=i+1; j < dim; j++) {
-      Complex tempp = Rmat(i, j);
-      Complex tempp2 = T11 * tempp;
-      tempp2 += T12 * Rmat(i+1, j);
-      Rmat(i, j) -= tempp2;
-      
-      tempp2 = T21 * tempp;
-      tempp2 += T22 * Rmat(i+1, j);
-      Rmat(i+1, j) -= tempp2;
+    for(int j=i+1; j < nKr; j++) {
+      Complex temp = Rmat(i, j);
+      Rmat(i, j)   -= (T11 * Rmat(i, j) + T12 * Rmat(i+1, j));      
+      Rmat(i+1, j) -= (T21 * temp + T22 * Rmat(i+1, j));
     }
   }
 
   // Rotate R and V, i.e. H->RQ. V->VQ 
-  for(int j = 0; j < dim - 1; j++) {
+  for(int j = 0; j < nKr - 1; j++) {
     if(abs(R11[j]) > tol) {
-
 #pragma omp parallel for
       for(int i = 0; i < j+2; i++) {
-	Complex tempp = Rmat(i, j);
-	Complex tempp2 = R11[j] * tempp;
-	tempp2 += R12[j] * Rmat(i, j+1);
-	Rmat(i, j) -= tempp2;
-	
-	tempp2 = R21[j] * tempp;
-	tempp2 += R22[j] * Rmat(i, j+1);
-	Rmat(i, j+1) -= tempp2;
+	Complex temp = Rmat(i, j);
+	Rmat(i, j) -= (R11[j] * temp + R12[j] * Rmat(i, j+1));	
+	Rmat(i, j+1) -= (R21[j] * temp + R22[j] * Rmat(i, j+1));	
       }
 
 #pragma omp parallel for
-      for(int i = 0; i < dim; i++) {
-	Complex tempp = Qmat(i, j);
-	Complex tempp2 = R11[j] * tempp;
-	tempp2 += R12[j] * Qmat(i, j+1);
-	Qmat(i, j) -= tempp2;
-	
-	tempp2 = R21[j] * tempp;
-	tempp2 += R22[j] * Qmat(i, j+1);
-	Qmat(i, j+1) -= tempp2;
+      for(int i = 0; i < nKr; i++) {
+	Complex temp = Qmat(i, j);
+	Qmat(i, j) -= (R11[j] * temp + R12[j] * Qmat(i, j+1));
+	Qmat(i, j+1) -= (R21[j] * temp + R22[j] * Qmat(i, j+1));	
       }
     }
-  }
-  
-  // Free allocated vectors
-  free(R11);
-  free(R12);
-  free(R21);
-  free(R22);
+  }  
 } 
 
 int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, int nKr)
@@ -577,7 +543,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
   MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
   Rmat = upperHess;
   
-  double tol = 1e-11;
+  double tol = 1e-12;
   Complex temp, discriminant, sol1, sol2, eval;
   int max_iter = 100000;
   int iter = 0;

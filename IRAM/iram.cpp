@@ -13,7 +13,7 @@
 #include <omp.h>
 #include <sys/time.h>
 
-#define Nvec 2048
+#define Nvec 512
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
     for(int j=0; j<Nvec; j++) {
       mat[i][j] = ref(i,j);
-      if(symm) mat[i][j] += conj(ref(j,i));	
+      if(symm) mat[i][j] += conj(ref(j,i));
       if(i == j) mat[i][j] += diag;
     }
   }
@@ -117,11 +117,10 @@ int main(int argc, char **argv) {
     zero(r[i]);
   }
 
-  // Eigens object for Arnoldi vector rotation
+  // Eigens object for Arnoldi vector rotation and QR shifts
   MatrixXcd Qmat = MatrixXcd::Identity(nKr, nKr);
   MatrixXcd sigma = MatrixXcd::Identity(nKr, nKr);
  
-
   double epsilon = DBL_EPSILON;
   double epsilon23 = pow(epsilon, 2.0/3.0);
   double beta = 0.0;
@@ -260,18 +259,19 @@ int main(int argc, char **argv) {
     if (num_converged >= nConv || nEv == Nvec) {
       converged = true;
       // Compute Eigenvalues
-      gettimeofday(&start, NULL); 
+      gettimeofday(&start, NULL);
       Qmat.setIdentity();
       qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
       gettimeofday(&end, NULL);  
       t_EV += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
       
-      gettimeofday(&start, NULL); 
+      gettimeofday(&start, NULL);
       rotateVecsComplex(kSpace, Qmat, 0, nKr, nKr);
       reorder(kSpace, evals, residua, nKr, spectrum);
       computeEvals(mat, kSpace, residua, evals, nKr);
       gettimeofday(&end, NULL);  
       t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+      
     } else if (restart_iter < max_restarts) {
       
       //          %-------------------------------------------------%
@@ -407,11 +407,12 @@ int main(int argc, char **argv) {
   }
   
   cout << "Timings:" << endl;
+  if(eigen_check) cout << "Eigen = " << t_eigen << endl;
   cout << "init = " << t_init << endl;
   cout << "compute = " << t_compute << endl;
   cout << "sort = " << t_sort << endl;
   cout << "EV = " << t_EV << endl;
   cout << "QR = " << t_QR << endl;
-  cout << "missing = " << (t_total) << " - " << (t_compute + t_init + t_sort + t_EV + t_QR) << " = " << (t_total - (t_compute + t_init + t_sort + t_EV + t_QR)) << " ("<<(100*((t_total - (t_compute + t_init + t_sort + t_EV + t_QR))))/t_total<<"%)" << endl;
+  cout << "missing = " << (t_total) << " - " << (t_compute + t_init + t_sort + t_EV + t_QR + t_eigen) << " = " << (t_total - (t_compute + t_init + t_sort + t_EV + t_QR + t_eigen)) << " ("<<(100*((t_total - (t_compute + t_init + t_sort + t_EV + t_QR + t_eigen))))/t_total<<"%)" << endl;
   
 }
