@@ -6,7 +6,7 @@ TARGET	 = iram
 SOURCES  = iram.cpp 
 OBJS     = iram.o
 INC      = $(addprefix ${INCLUDE}/, linAlgHelpers.h algoHelpers.h lapack.h)
-LIBS     = -L/usr/local/opt/libomp/lib -lomp -framework Accelerate /usr/local/Cellar/lapack/3.9.0_1/lib/liblapacke.dylib
+LIBS     = -L/usr/local/opt/libomp/lib -lomp 
 
 ERRS=-Wall
 

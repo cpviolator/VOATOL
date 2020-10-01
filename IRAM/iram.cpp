@@ -14,8 +14,6 @@
 #include <sys/time.h>
 
 #define Nvec 2048
-#define EIGEN_USE_LAPACKE
-#define EIGEN_USE_BLAS
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -58,7 +56,6 @@ int main(int argc, char **argv) {
   bool symm = (atoi(argv[8]) == 1 ? true : false);
   bool verbose = (atoi(argv[9]) == 1 ? true : false);
   bool eigen_check = (atoi(argv[10]) == 1 ? true : false);
-  int threads = atoi(std::getenv("OMP_NUM_THREADS"));
    
   if (!(nKr > nEv + 6)) {
     printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
@@ -121,8 +118,6 @@ int main(int argc, char **argv) {
   }
 
   // Eigens object for Arnoldi vector rotation
-  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolverUH;
-  Eigen::ComplexSchur<MatrixXcd> schurUH;
   MatrixXcd Qmat = MatrixXcd::Identity(nKr, nKr);
   MatrixXcd sigma = MatrixXcd::Identity(nKr, nKr);
  
@@ -384,30 +379,30 @@ int main(int argc, char **argv) {
   if (!converged) {    
     printf("IRAM failed to compute the requested %d vectors with with a %d search space and a %d Krylov space in %d restart_steps and %d OPs\n", nConv, nEv, nKr, restart_iter, iter);
   } else {
-    printf("IRAM computed the requested %d vectors with a with a %d search space and a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nConv, nEv, nKr, restart_iter, iter, (t_compute + t_init + t_sort + t_EV + t_QR));    
-  }
-  
-  if(eigen_check) {
-    // sort the eigen eigenvalues by the requested spectrum. The wanted values
-    // will appear at the end of the array. We need a dummy residua array to use
-    // the sorting function.
-    std::vector<double> res_dummy(Nvec, 0.0);
-    zsortc(spectrum, Nvec, eigen_evals, res_dummy);
-    for (int i = 0; i < nConv; i++) {
-      int idx_e = Nvec - 1 - i;
-      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = "
-	     "(%+.8e,%+.8e)\n", i,
-	     evals[i].real(), evals[i].imag(),
-	     eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
-	     eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
-	     (evals[i].real() - eigen_evals[idx_e].real())/eigen_evals[idx_e].real(),
-	     (evals[i].imag() - eigen_evals[idx_e].imag())/eigen_evals[idx_e].imag());
-    }
-  } else {
-    // "reorder" places the wanted eigenvalues and eigenvectors at the start of the
-    // array
-    for (int i = 0; i < nConv; i++) {
-      printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
+    printf("IRAM computed the requested %d vectors with a with a %d search space and a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nConv, nEv, nKr, restart_iter, iter, (t_compute + t_init + t_sort + t_EV + t_QR));
+
+    if(eigen_check) {
+      // sort the eigen eigenvalues by the requested spectrum. The wanted values
+      // will appear at the end of the array. We need a dummy residua array to use
+      // the sorting function.
+      std::vector<double> res_dummy(Nvec, 0.0);
+      zsortc(spectrum, Nvec, eigen_evals, res_dummy);
+      for (int i = 0; i < nConv; i++) {
+	int idx_e = Nvec - 1 - i;
+	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = "
+	       "(%+.8e,%+.8e)\n", i,
+	       evals[i].real(), evals[i].imag(),
+	       eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
+	       eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
+	       (evals[i].real() - eigen_evals[idx_e].real())/eigen_evals[idx_e].real(),
+	       (evals[i].imag() - eigen_evals[idx_e].imag())/eigen_evals[idx_e].imag());
+      }
+    } else {
+      // "reorder" places the wanted eigenvalues and eigenvectors at the start of the
+      // array
+      for (int i = 0; i < nConv; i++) {
+	printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
+      }
     }
   }
   
