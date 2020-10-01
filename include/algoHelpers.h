@@ -5,6 +5,8 @@
 std::vector<double> ritz_mat;
 std::vector<Complex> block_ritz_mat;
 
+extern bool verbose;
+
 //Functions used in the lanczos algorithm
 //---------------------------------------
 
@@ -449,6 +451,7 @@ void eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
 {
   // QR the upper Hessenberg matrix
   Eigen::ComplexSchur<MatrixXcd> schurUH;
+  Qmat.setIdentity();
   schurUH.computeFromHessenberg(upperHessEigen, Qmat);
   
   // Extract the upper triangular matrix, eigensolve, then
@@ -518,42 +521,46 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
     temp2 += temp3;
     Rmat(i, i) -= temp2;
     Rmat(i+1, i) = 0;
+    
     // Continue for the other columns
+#pragma omp parallel for
     for(int j=i+1; j < dim; j++) {
-      temp = Rmat(i, j);
-      temp2 = T11 * temp;
-      temp2 += T12 * Rmat(i+1, j);
-      Rmat(i, j) -= temp2;
+      Complex tempp = Rmat(i, j);
+      Complex tempp2 = T11 * tempp;
+      tempp2 += T12 * Rmat(i+1, j);
+      Rmat(i, j) -= tempp2;
       
-      temp2 = T21 * temp;
-      temp2 += T22 * Rmat(i+1, j);
-      Rmat(i+1, j) -= temp2;
+      tempp2 = T21 * tempp;
+      tempp2 += T22 * Rmat(i+1, j);
+      Rmat(i+1, j) -= tempp2;
     }
   }
 
   // Rotate R and V, i.e. H->RQ. V->VQ 
   for(int j = 0; j < dim - 1; j++) {
     if(abs(R11[j]) > tol) {
+#pragma omp parallel for
       for(int i = 0; i < j+2; i++) {
-	temp = Rmat(i, j);
-	temp2 = R11[j] * temp;
-	temp2 += R12[j] * Rmat(i, j+1);
-	Rmat(i, j) -= temp2;
+	Complex tempp = Rmat(i, j);
+	Complex tempp2 = R11[j] * tempp;
+	tempp2 += R12[j] * Rmat(i, j+1);
+	Rmat(i, j) -= tempp2;
 	
-	temp2 = R21[j] * temp;
-	temp2 += R22[j] * Rmat(i, j+1);
-	Rmat(i, j+1) -= temp2;
+	tempp2 = R21[j] * tempp;
+	tempp2 += R22[j] * Rmat(i, j+1);
+	Rmat(i, j+1) -= tempp2;
       }
-      
+
+#pragma omp parallel for
       for(int i = 0; i < dim; i++) {
-	temp = Qmat(i, j);
-	temp2 = R11[j] * temp;
-	temp2 += R12[j] * Qmat(i, j+1);
-	Qmat(i, j) -= temp2;
+	Complex tempp = Qmat(i, j);
+	Complex tempp2 = R11[j] * tempp;
+	tempp2 += R12[j] * Qmat(i, j+1);
+	Qmat(i, j) -= tempp2;
 	
-	temp2 = R21[j] * temp;
-	temp2 += R22[j] * Qmat(i, j+1);
-	Qmat(i, j+1) -= temp2;
+	tempp2 = R21[j] * tempp;
+	tempp2 += R22[j] * Qmat(i, j+1);
+	Qmat(i, j+1) -= tempp2;
       }
     }
   }
@@ -565,70 +572,71 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
   free(R22);
 } 
 
-int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, MatrixXcd &Rmat, int nKr)
+int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, int nKr)
 {
-  int dim = nKr;
-  for(int i=0; i<dim; i++) {
-    for(int j=0; j<dim; j++) {
-      Rmat(i,j) = upperHess(i,j);
-    }
-  }
-  
-  //Eigen::ComplexSchur<MatrixXcd> schurUH;
-  //schurUH.compute(Rmat);
-  
-  double tol = 1e-15;
-  Complex temp, disc, dist1, dist2, eval;
+  // Do not overwrite the upper Hessenberg matrix!
+  MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
+  Rmat = upperHess;
+
+  // This is about as high as one cat get in double without causing
+  // the Arnoldi to compute more restarts.
+  double tol = 1e-11;
+  int max_iter = 100000;
   int iter = 0;
-  
-  // The convergence is much faster if we start in the lower corner
-  // of the matrix
-  //for (int k = 0; k < dim-1; k++) {
-  for (int k = dim-2; k >= 0; k--) {
-    while (iter < 10000) {
-      if(abs(Rmat(k+1, k)) < tol) {
-	Rmat(k+1, k) = 0;
+
+  Complex temp, discriminant, sol1, sol2, eval;
+  for (int i = nKr-2; i >= 0; i--) {    
+    while (iter < max_iter) {
+      if(abs(Rmat(i+1, i)) < tol) {
+	Rmat(i+1, i) = 0.0;
 	break;
+      } else {
+      
+	// Compute the 2 eigenvalues via the quadratic formula
+	//----------------------------------------------------
+	// The discriminant
+	temp = (Rmat(i, i) - Rmat(i+1, i+1)) * (Rmat(i, i) - Rmat(i+1, i+1)) / 4.0;
+	discriminant = sqrt(Rmat(i+1, i) * Rmat(i, i+1) + temp);
+
+	// Reuse temp
+	temp = (Rmat(i, i) + Rmat(i+1, i+1))/2.0;
+	
+	sol1 = temp - Rmat(i+1, i+1) + discriminant;
+	sol2 = temp - Rmat(i+1, i+1) - discriminant;
+	//----------------------------------------------------
+	
+	// Deduce the better eval to shift
+	eval = Rmat(i+1, i+1) + (norm(sol1) < norm(sol2) ? sol1 : sol2);
+	
+	// Shift the eigenvalue
+	for(int j = 0; j < nKr; j++) Rmat(j, j) -= eval;
+	
+	// Do the QR iteration
+	qriteration(Rmat, Qmat, nKr);
+	
+	// Shift back
+	for(int j = 0; j < nKr; j++) Rmat(j, j) += eval;
       }
-      
-      // Calculate the eigenvalues of the 2x2 matrix
-      temp = Rmat(k, k) - Rmat(k+1, k+1);
-      temp *= temp;
-      temp /= 4;
-      
-      disc = Rmat(k+1, k) * Rmat(k, k+1);
-      disc += temp;
-      disc = sqrt(disc);
-      temp = Rmat(k, k) + Rmat(k+1, k+1);
-      temp /= 2;
-      dist1 = temp + disc;
-      dist1 = dist1 - Rmat(k+1, k+1);
-      dist2 = temp - disc;
-      dist2 = dist2 - Rmat(k+1, k+1);
-      if (norm(dist1) < norm(dist2))
-	eval = dist1 + Rmat(k+1, k+1);
-      else
-	eval = dist2 + Rmat(k+1, k+1);
-      
-      // Shift H with the eigenvalue
-      for(int i = 0; i < dim; i++) Rmat(i, i) -= eval;
-      
-      // Do the QR iteration
-      qriteration(Rmat, Qmat, dim);
-      
-      // Shift H back
-      for(int i = 0; i < dim; i++) Rmat(i, i) += eval;
-      
       iter++;    
     } 
   }
+
+  // Compute the eigevectors of the origial upper Hessenberg
+  // This is now very cheap because the input matrix to Eigen
+  // is upper triangular
+  MatrixXcd matUpper = MatrixXcd::Zero(nKr, nKr);
+  matUpper = Rmat.triangularView<Eigen::Upper>();
+  matUpper.conservativeResize(nKr, nKr);
+  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver(matUpper);
+  Qmat *= eigenSolver.eigenvectors();
   
-  printf("eigensystem iterations = %d\n", iter);
+  // Update eigenvalues, residiua, and the Q matrix
+  for(int i=0; i<nKr; i++) {
+    evals[i] = eigenSolver.eigenvalues()[i];
+    residua[i] = abs(beta * Qmat.col(i)[nKr-1]);
+  }
   
-  // Rmat is now upper triangular. Eigensolve
-  //Eigen::ComplexEigenSolver<MatrixXcd> eigensolver(Rmat);  
-  //Qmat = Qmat * eigensolver.eigenvectors();
-  //for(int i=0; i<dim; i++) Rmat(i,i) = eigensolver.eigenvalues()[i];
+  if(verbose) printf("QR iterations = %d\n", iter);
   
   return iter;  
 }
