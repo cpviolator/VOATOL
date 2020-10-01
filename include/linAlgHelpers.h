@@ -50,17 +50,49 @@ void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 }
 
 Complex dotProd(Complex *x, Complex *y) {
+  /*
   Complex prod = 0.0;
-  //#pragma omp parallel for reduction(+:prod) 
+  double prodr = 0.0;
+  double prodi = 0.0;
+#pragma omp parallel for reduction(+:prodr) reduction(+:prodi) 
+  for(int i=0; i<Nvec; i++) {
+    prod = x[i]*y[i];
+    prodr += prod.real();
+    prodr += prod.imag();
+  }
+  prod.real(prodr);
+  prod.imag(prodi);
+  return prod;
+  */
+  Complex prod = 0.0;
+  for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
+  return prod;  
+}
+
+Complex dotProdMatVec(Complex *x, Complex *y) {
+  Complex prod = 0.0;
   for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
   return prod;
 }
 
 Complex cDotProd(const Complex *x, const Complex *y) {
-  Complex sum = 0.0;
-  //#pragma omp parallel for reduction(+:sum) 
-  for(int i=0; i<Nvec; i++) sum += conj(x[i])*y[i];
-  return sum;
+  /*
+  Complex prod = 0.0;
+  double prodr = 0.0;
+  double prodi = 0.0;
+#pragma omp parallel for reduction(+:prodr) reduction(+:prodi) 
+  for(int i=0; i<Nvec; i++) {
+    prod = conj(x[i])*y[i];
+    prodr += prod.real();
+    prodr += prod.imag();
+  }
+  prod.real(prodr);
+  prod.imag(prodi);
+  return prod;
+  */
+  Complex prod = 0.0;
+  for(int i=0; i<Nvec; i++) prod += conj(x[i])*y[i];
+  return prod;  
 }
 
 double norm2(Complex *x) {
@@ -95,9 +127,9 @@ void matVec(Complex **mat, Complex *out, Complex *in) {
   Complex temp[Nvec];
   zero(temp);
   //Loop over rows of matrix
-  //#pragma omp parallel for 
+#pragma omp parallel for 
   for(int i=0; i<Nvec; i++) {
-    temp[i] = dotProd(&mat[i][0], in);    
+    temp[i] = dotProdMatVec(&mat[i][0], in);    
   }
   copy(out, temp);  
 }

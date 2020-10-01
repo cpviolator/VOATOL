@@ -12,11 +12,10 @@
 #include <unistd.h>
 #include <omp.h>
 
-#define Nvec 1024
+#define Nvec 6144
 #define EIGEN_USE_LAPACKE
+#define EIGEN_USE_BLAS
 #include "Eigen/Eigenvalues"
-#include "Eigen/Dense"
-
 using namespace std;
 using Eigen::MatrixXcd;
 using Eigen::MatrixXd;
@@ -28,28 +27,45 @@ using Eigen::MatrixXd;
 
 int main(int argc, char **argv) {
 
-  if (argc < 12 || argc > 12) {
-    cout << "Built for matrix size " << Nvec << endl;
-    cout << "./irlm <nKr> <nEv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <threads> <qr_type: 0=arpack, 1=custom> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
+  int nKr = Nvec/4;
+  int nEv = Nvec/8;
+  int nConv = 3*Nvec/8;
+  int max_restarts = 1000;
+  double diag = 100;
+  double tol = 1e-10;
+  int spectrum = 0;
+  bool symm = false;
+  bool verbose = false;
+  bool eigen_check = false;
+  int threads = 1;
+  
+  cout << "Built for matrix size " << Nvec << endl;
+  if (argc != 12 && argc != 1) {
+    cout << "Usage:" << endl;
+    cout << "./iram <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true> <threads>" << endl;
+    cout << "Example command: " << endl;
+    cout << "./iram " << Nvec/2 << " " << Nvec/8 << " 1000 100 1e-10 0 0 0 0 1" << endl;
+    exit(0);
+  } else if (argc == 12) {
+    nKr = atoi(argv[1]);
+    nEv = atoi(argv[2]);
+    nConv = atoi(argv[3]);
+    max_restarts = atoi(argv[4]);
+    diag = atof(argv[5]);
+    tol = atof(argv[6]);
+    spectrum = atoi(argv[7]);
+    symm = (atoi(argv[8]) == 1 ? true : false);
+    verbose = (atoi(argv[9]) == 1 ? true : false);
+    eigen_check = (atoi(argv[10]) == 1 ? true : false);
+    threads = atoi(argv[11]);
+  } else {
     exit(0);
   }
   
-  int nKr = atoi(argv[1]);
-  int nEv = atoi(argv[2]);
-  int max_restarts = atoi(argv[3]);
-  double diag = atof(argv[4]);
-  double tol = atof(argv[5]);
-  int spectrum = atoi(argv[6]);
-  bool reverse = (spectrum%2 != 0 ? true : false);
-  int threads = atoi(argv[7]);
-  int qr_type = atoi(argv[8]);
-  bool symm = (atoi(argv[9]) == 1 ? true : false);
-  bool verbose = (atoi(argv[10]) == 1 ? true : false);
-  bool eigen_check = (atoi(argv[11]) == 1 ? true : false);
-  omp_set_num_threads(threads);
-  Eigen::setNbThreads(threads);
-
-  int CLOCKS_PER_CORE = threads*CLOCKS_PER_SEC;
+  //int threads = atoi(getenv("OMP_NUM_THREADS"));
+  //omp_set_num_threads(threads);
+  
+  int CLOCKS_PER_CORE = (CLOCKS_PER_SEC*threads);
   
   if (!(nKr > nEv + 6)) {
     printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
@@ -67,7 +83,6 @@ int main(int argc, char **argv) {
   printf("Restarts = %d\n", max_restarts);
   printf("diag = %e\n", diag);
   printf("tol = %e\n", tol);
-  printf("reverse = %s\n", reverse == true ? "true" :  "false");
 
   // Construct a matrix using Eigen.
   //---------------------------------------------------------------------  
@@ -89,6 +104,7 @@ int main(int argc, char **argv) {
   // Eigensolve the matrix using Eigen, use as a reference.
   //---------------------------------------------------------------------
   Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver;
+  std::vector<Complex> eigen_evals(Nvec, 0.0);
   double t1 = clock();
   if(eigen_check) {
     printf("START EIGEN SOLUTION\n");
@@ -96,19 +112,16 @@ int main(int argc, char **argv) {
     else eigenSolver.compute(ref + diagonal);
     double t2e = clock() - t1;
     printf("END EIGEN SOLUTION\n");
-    for(int i=0; i<Nvec; i++) {
-      printf("(%e, %e) %.16e\n", eigenSolver.eigenvalues()[i].real(), eigenSolver.eigenvalues()[i].imag(), abs(eigenSolver.eigenvalues()[i]) );
-    }
     printf("Time to solve problem using Eigen = %e\n", t2e/CLOCKS_PER_CORE);
+    for(int i=0; i<Nvec; i++) eigen_evals[i] = eigenSolver.eigenvalues()[i];
   }
   //-----------------------------------------------------------------------
 
-  // Construct objects for Arnoldi.
+  // Construct objects for IRAM.
   //---------------------------------------------------------------------
   //Eigenvalues and their residua
   std::vector<double> residua(nKr, 0.0);
   std::vector<Complex> evals(nKr, 0.0);
-  std::vector<int> evals_idx(nKr, 0);
 
   // Krylov Space.
   std::vector<Complex*> kSpace(nKr);
@@ -130,7 +143,8 @@ int main(int argc, char **argv) {
   // Eigens object for Arnoldi vector rotation
   Eigen::ComplexEigenSolver<MatrixXcd> eigenSolverUH;
   Eigen::ComplexSchur<MatrixXcd> schurUH;
-
+  MatrixXcd Qmat = MatrixXcd::Identity(nKr, nKr);
+  
   printf("START IRAM SOLUTION\n");
 
   double epsilon = DBL_EPSILON;
@@ -140,10 +154,8 @@ int main(int argc, char **argv) {
   int iter = 0;
   int restart_iter = 0;
   int iter_converged = 0;
-  int iter_locked = 0;
   int iter_keep = 0;
   int num_converged = 0;
-  int num_locked = 0;
   int num_keep = 0;
   
   // Populate source with randoms.
@@ -158,88 +170,40 @@ int main(int argc, char **argv) {
   copy(r[0], kSpace[0]);
   
   t1 = clock();
-  double t_eig_dense = 0;
-  double t_qr_dense = 0;
-  int dense_call = 0;
-  int qr_call = 0;
   
   // START IRAM
   // Implicitly restarted Arnoldi method for asymmetric eigenvalue problems
   //----------------------------------------------------------------------
 
   // Do the first nEv steps
-
   for (int step = 0; step < nEv; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
   num_keep = nEv;
   iter += nEv;
-  double t_step = clock() - t1;  
+  
   // Loop over restart iterations.
   while(restart_iter < max_restarts && !converged) {
 
-    t1 = clock();
     for (int step = num_keep; step < nKr; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
-    t_step += clock() - t1;
-    
     iter += (nKr - num_keep);
-    if(verbose) printf("Restart %d complete\n", restart_iter+1);
 
     // Construct objects for Ritz and bounds
     int dim = nKr;
-
-    t1 = clock();
-    dense_call++;
+    
     // Compute Ritz and bounds
-    
-    /*    
-    eigenSolverUH.compute(upperHessEigen);
-    for(int i=0; i<dim; i++) {
-      evals[i] = eigenSolverUH.eigenvalues()[i];	
-      residua[i] = abs(beta * eigenSolverUH.eigenvectors().col(i)[dim-1]);
-    }
-    */
-    
-    MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
-    MatrixXcd Qmat = MatrixXcd::Identity(nKr, nKr);
-    for(int i=0; i<nKr; i++)
-      for(int j=0; j<nKr; j++) Rmat(i,j) = upperHessEigen(i,j);
-    
-    zlahqr(true, true, nKr, 0, nKr, Rmat, nKr, evals, 0, nKr, Qmat, nKr);
-    //qrFromUpperHess(upperHessEigen, Qmat, Rmat, nKr);
-    
-    for(int i=0; i<dim; i++) {
-      evals[i] = Rmat(i,i);	
-      residua[i] = abs(beta * Qmat.col(i)[dim-1]);
-    }    
-    
-    t_eig_dense += clock() - t1;
+    eigensolveFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);    
     num_keep = nEv;    
     int nshifts = nKr - num_keep;
     
     // Emulate zngets: sort the unwanted Ritz to the start of the arrays, then
     // sort the first (nKr - nEv) bounds to be first for forward stability
-    if(verbose) {
-      for(int i=0; i<dim; i++) cout << "pre " << i << " " << evals[i] << " " << residua[i] << endl;
-      cout << endl;
-    }
     // Sort to put unwanted Ritz(evals) first
-    //if(reverse) zsortc(1, dim, evals, residua);
-    //else zsortc(0, dim, evals, residua);
-    zsortc(spectrum, dim, evals, residua);
-    
+    zsortc(spectrum, dim, evals, residua);    
     // Sort to put smallest Ritz errors(residua) first
     zsortc(0, nshifts, residua, evals);
     
-    if(verbose) {
-      for(int i=0; i<dim; i++) {
-	if(i == nshifts) cout << "---" << endl;
-	cout << "post " << i << " " << evals[i] << " " << residua[i] << endl;	
-      }
-      cout << endl;
-    }
-        
     // Convergence test
     iter_converged = 0;
-    for(int i=0; i<nEv; i++) {
+    for(int i=0; i<nConv; i++) {
       int idx = dim - 1 - i;
       double rtemp = std::max(epsilon23, abs(evals[idx]));
       if(residua[idx] < tol * rtemp) {
@@ -249,7 +213,6 @@ int main(int argc, char **argv) {
 	break;
       }
     }    
-    printf("%04d converged eigenvalues at iter %d\n", num_converged, restart_iter);
 
     //       %---------------------------------------------------------%
     //       | Count the number of unwanted Ritz values that have zero |
@@ -260,16 +223,11 @@ int main(int argc, char **argv) {
     //       | shifting. Decrease NP the number of shifts to apply. If |
     //       | no shifts may be applied, then prepare to exit          |
     //       %---------------------------------------------------------%
-
     
     int nshifts0 = nshifts;
-    iter_locked = 0;
     for(int i=0; i<nshifts0; i++) {
       if(residua[i] <= epsilon) {
-	cout << "Possible lock at residual[" << i << "] = " << residua[i] << endl;; 
 	nshifts--;
-	//num_keep++;
-	iter_locked++;
       }
     }
     
@@ -277,96 +235,71 @@ int main(int argc, char **argv) {
       cout << "No shifts can be applied" << endl;
       exit(0);
     }    
+
+    int num_keep0 = num_keep;
+    iter_keep = std::min(iter_converged + (nKr - num_converged) / 2, nKr - 12);
     
-    if (num_converged >= nEv || nEv == Nvec) {
+    num_converged = iter_converged;
+    num_keep = iter_keep;      
+    nshifts = nKr - num_keep;
+
+    printf("%04d converged eigenvalues at iter %d\n", num_converged, restart_iter);
+    
+    if (num_converged >= nConv || nEv == Nvec) {
       converged = true;
+      // Compute Eigenvalues
+      Qmat.setIdentity();      
+      eigensolveFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);      
+      rotateVecsComplex(kSpace, Qmat, 0, nKr, nKr);
+      reorder(kSpace, evals, residua, nKr, spectrum);
+      computeEvals(mat, kSpace, residua, evals, nKr);      
     } else if (restart_iter < max_restarts) {
       
       //          %-------------------------------------------------%
       //          | Do not have all the requested eigenvalues yet.  |
       //          | To prevent possible stagnation, adjust the size |
       //          | of NEV.                                         |
+      //          | If the size of NEV was just increased resort    |
+      //          | the eigenvalues.                                |
       //          %-------------------------------------------------%
-
-      int num_keep0 = num_keep;
-      //num_locked += iter_locked;
-      num_locked = 0;
-      iter_keep = std::min(iter_converged + (nKr - num_converged) / 2, nKr - num_locked - 12);
-
-      num_converged = num_locked + iter_converged;
-      num_keep = num_locked + iter_keep;
-      //num_locked += iter_locked;
-      
-      //num_keep += num_locked + std::min(num_converged, nshifts/2);
-      //if(num_keep == 1 && nKr >= 6) num_keep = nKr/2;
-      //else if(num_keep == 1 && nKr > 3) num_keep = 2;
-      nshifts = nKr - num_keep;
-      if(num_keep + nshifts != nKr) {
-	cout << "Uh oh....." << endl;
-	exit(0);
-      }
-      
-      //          %---------------------------------------%
-      //          | If the size of NEV was just increased |
-      //          | resort the eigenvalues.               |
-      //          %---------------------------------------%
 
       if(num_keep0 < num_keep) {
 	// Emulate zngets: sort the unwanted Ritz to the start of the arrays, then
 	// sort the first (nKr - nEv) bounds to be first for forward stability
 	
 	// Sort to put unwanted Ritz(evals) first
-	//if(reverse) zsortc(1, dim, evals, residua);
-	//else zsortc(0, dim, evals, residua);
 	zsortc(spectrum, dim, evals, residua);
-	
 	// Sort to put smallest Ritz errors(residua) first
 	zsortc(0, nshifts, residua, evals);    
       }
-      
-      
+     
       //       %---------------------------------------------------------%
       //       | Apply the NP implicit shifts by QR bulge chasing.       |
       //       | Each shift is applied to the whole upper Hessenberg     |
       //       | matrix H.                                               |
       //       %---------------------------------------------------------%
 
-      // Emulate znapps
-      MatrixXcd Qmat = MatrixXcd::Identity(dim, dim);
-      switch(qr_type) {
-      case 0:
-	//znapps(num_keep, nshifts, evals, upperHessEigen, Qmat);
-	for(int j=0; j<nshifts; j++) {      
-	  givensQRUpperHess(upperHessEigen, Qmat, dim, nshifts, j, num_keep, evals[j], restart_iter);
-	}
-	break;
-      case 1: 
-
-	t1 = clock();    
+      Qmat.setIdentity();
+      MatrixXcd sigma = MatrixXcd::Identity(dim, dim);
+      for(int i=0; i<nshifts; i++){
 	
-	MatrixXcd sigma = MatrixXcd::Identity(dim, dim);
-	for(int i=0; i<nshifts; i++){
-	  
-	  if(verbose) cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	  
-	  sigma.setIdentity();
-	  sigma *= evals[i];
-	  if(verbose) printf("Projecting out ||(%e,%e)|| = %e\n", evals[i].real(), evals[i].imag(), abs(evals[nshifts + i]));
-	  upperHessEigen -= sigma;
-	  qriteration(upperHessEigen, Qmat, dim);	
-	  upperHessEigen += sigma;
-	  
-	  if(verbose) {
-	    cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	    MatrixXcd Id = MatrixXcd::Identity(dim, dim);
-	    cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
-	  }
+	if(verbose) cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
+	
+	sigma.setIdentity();
+	sigma *= evals[i];
+	if(verbose) printf("Projecting out ||(%e,%e)|| = %e\n", evals[i].real(), evals[i].imag(), abs(evals[nshifts + i]));
+	upperHessEigen -= sigma;
+	qriteration(upperHessEigen, Qmat, dim);	
+	upperHessEigen += sigma;
+	
+	if(verbose) {
+	  cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
+	  MatrixXcd Id = MatrixXcd::Identity(dim, dim);
+	  cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
 	}
-	qr_call++;
-	t_qr_dense += clock() - t1;
       }
       
-      rotateVecsComplex(kSpace, Qmat, num_locked, num_keep+1, dim);
+      rotateVecsComplex(kSpace, Qmat, 0, num_keep+1, dim);
       
       //    %-------------------------------------%
       //    | Update the residual vector:         |
@@ -385,30 +318,27 @@ int main(int argc, char **argv) {
 	
 	printf("Using random guess\n");
 	for(int i=0; i<Nvec; i++) {
-	  r[0][i].real(drand48());
-	  r[0][i].imag(drand48());    
+	  kSpace[num_keep][i].real(drand48());
+	  kSpace[num_keep][i].imag(drand48());    
 	}
 	
 	Complex alpha = 0.0;
 	for(int i=0; i < num_keep; i++) {
-	  alpha = cDotProd(kSpace[i], r[0]);
-	  //upperHess[i][num_keep-1] += alpha;
+	  alpha = cDotProd(kSpace[i], kSpace[num_keep]);
 	  upperHessEigen(i,num_keep-1) += alpha;
-	  caxpy(-1.0*alpha, kSpace[i], r[0]);
+	  caxpy(-1.0*alpha, kSpace[i], kSpace[num_keep]);
 	}
 	
 	if(verbose) {
 	  // Measure orthonormality
 	  for(int i=0; i < num_keep; i++) {
-	    alpha = cDotProd(kSpace[i], r[0]);
+	    alpha = cDotProd(kSpace[i], kSpace[num_keep]);
 	    cout << "alpha = " << alpha <<endl;
 	  }
 	}
-	
-	upperHessEigen(num_keep, num_keep-1).real(normalise(r[0]));
-	
-	copy(kSpace[num_keep], r[0]);
-	//exit(0);
+	upperHessEigen(num_keep, num_keep-1).real(normalise(kSpace[num_keep]));
+	caxpby(upperHessEigen(num_keep, num_keep-1), kSpace[num_keep], Qmat(dim-1, num_keep-1), r[0]);
+	nEv -= 1;
       }
 #endif
       
@@ -423,36 +353,28 @@ int main(int argc, char **argv) {
   } else {
     printf("IRAM computed the requested %d vectors with a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nEv, nKr, restart_iter, iter, t2l/CLOCKS_PER_CORE);    
   }
-  
-  // Compute Eigenvalues
-  eigenSolverUH.compute(upperHessEigen);
-  rotateVecsComplex(kSpace, eigenSolverUH.eigenvectors(), 0, nKr, nKr);
-  computeEvals(mat, kSpace, residua, evals, nKr);
-  for (int i = 0; i < nEv; i++) {
-    int idx = (reverse ? i : nKr - 1 - i);
-    printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[idx].real(), evals[idx].imag(), abs(evals[idx]), residua[idx]);
-  }
 
-  cout << "time step = " << t_step/CLOCKS_PER_CORE << endl;
-  cout << "time eig dense = " << t_eig_dense/(CLOCKS_PER_CORE*dense_call) << " per call" << endl;
-  cout << "time qr dense = " << t_qr_dense/(CLOCKS_PER_CORE*qr_call) << " per call" << endl;
-  cout << "time total = " << (t_eig_dense+t_step+t_qr_dense)/CLOCKS_PER_CORE << endl;
-
-  
-  for (int i = 0; i < nEv; i++) {
-    int idx = (reverse ? i : nKr - 1 - i);
-    //printf("VectorNorm[%04d] = %.8e\n", i, norm(kSpace[idx]));
-  }
-  
   if(eigen_check) {
-    for (int i = 0; i < nEv; i++) {
-      int idx = (reverse ? i : nKr - 1 - i);
-      int idx_e = (reverse ? i : Nvec - 1 - i);
-      if(symm) {
-	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag()));
-      } else { 
-	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = (%+.8e,%+.8e)\n", i, evals[idx].real(), evals[idx].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), eigenSolver.eigenvalues()[idx_e].real(), eigenSolver.eigenvalues()[idx_e].imag(), (evals[idx].real() - eigenSolver.eigenvalues()[idx_e].real())/eigenSolver.eigenvalues()[idx_e].real(), (evals[idx].imag() - eigenSolver.eigenvalues()[idx_e].imag())/eigenSolver.eigenvalues()[idx_e].imag());
-      }
+    // sort the eigen eigenvalues by the requested spectrum. The wanted values
+    // will appear at the end of the array. We need a dummy residua array to use
+    // the sorting function.
+    std::vector<double> res_dummy(Nvec, 0.0);
+    zsortc(spectrum, Nvec, eigen_evals, res_dummy);
+    for (int i = 0; i < nConv; i++) {
+      int idx_e = Nvec - 1 - i;
+      printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = "
+	     "(%+.8e,%+.8e)\n", i,
+	     evals[i].real(), evals[i].imag(),
+	     eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
+	     eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
+	     (evals[i].real() - eigen_evals[idx_e].real())/eigen_evals[idx_e].real(),
+	     (evals[i].imag() - eigen_evals[idx_e].imag())/eigen_evals[idx_e].imag());
     }
-  }
+  } else {
+    // "reorder" places the wanted eigenvalues and eigenvectors at the start of the
+    // array
+    for (int i = 0; i < nConv; i++) {
+      printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
+    }
+  }  
 }
