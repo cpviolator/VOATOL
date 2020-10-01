@@ -111,6 +111,7 @@ void lanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
   copy(kSpace[j+1], r[0]);
 }
 
+#if 0
 void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
 		 std::vector<Complex*> &upperHess,
 		 std::vector<Complex*> &r, int j) {
@@ -162,6 +163,7 @@ void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
   normalise(r[0]);
   copy(kSpace[j+1], r[0]);
 }
+#endif
 
 #if 1
 void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
@@ -288,6 +290,61 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
 
 #endif
 
+void reorder(std::vector<Complex*> &kSpace, std::vector<Complex> evals, std::vector<double> residua, int nKr, int spectrum) {
+
+  int n = nKr;
+  std::vector<std::tuple<Complex, double, Complex*>> array(n);
+  for(int i=0; i<n; i++) array[i] = std::make_tuple(evals[i], residua[i], kSpace[i]);
+  
+  switch(spectrum) {
+  case 0:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (abs(std::get<0>(a)) > abs(std::get<0>(b))); } );
+    break;
+  case 1:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (abs(std::get<0>(a)) < abs(std::get<0>(b))); } );
+    break;
+  case 2:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (std::get<0>(a).real() > std::get<0>(b).real()); } );
+    break;
+  case 3:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (std::get<0>(a).real() < std::get<0>(b).real()); } );
+    break;
+  case 4:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (std::get<0>(a).imag() > std::get<0>(b).imag()); } );
+    break;
+  case 5:
+    std::sort(array.begin(), array.begin() + n,
+	      [] (const std::tuple<Complex, double, Complex*> &a,
+		  const std::tuple<Complex, double, Complex*> &b) {
+		return (std::get<0>(a).imag() < std::get<0>(b).imag()); } );
+    break;
+  default: printf("Undefined spectrum type %d given", spectrum);
+    exit(0);
+  }
+  
+  // Repopulate arrays with sorted elements
+  for(int i=0; i<n; i++) {
+    std::swap(evals[i], std::get<0>(array[i]));
+    std::swap(residua[i], std::get<1>(array[i]));
+    std::swap(kSpace[i], std::get<2>(array[i]));
+  }
+}
+
 
 void reorder(std::vector<Complex*> &kSpace, std::vector<double> alpha, int nKr, bool reverse) {
   int i = 0;
@@ -385,22 +442,28 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 
 
 
-double eigensolveFromUpperHess(std::vector<Complex*> &upperHess, Eigen::ComplexEigenSolver<MatrixXcd> &eigenSolverUH, int nKr, int num_locked)
+double eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
+			       std::vector<Complex> &evals,
+			       std::vector<double> &residua,
+			       const double beta, int nKr)
 {
-  int dim = nKr - num_locked;
-  //Construct the Upper Hessenberg matrix H_k      
-  MatrixXcd upperHessEigen = MatrixXcd::Zero(dim, dim);      
-  for(int k=num_locked; k<nKr; k++) {
-    for(int i=num_locked; i<nKr; i++) {
-      upperHessEigen(k,i) = upperHess[k][i];
-    }
-  }
-  //cout << upperHessEigen << endl;  
-  // Eigensolve dense UH
-  eigenSolverUH.compute(upperHessEigen);
-  //cout << eigenSolverUH.eigenvalues() << endl << endl;
-  //for(int i=0; i<dim; i++) cout << i << " " << abs(eigenSolverUH.eigenvalues()[i]) << endl;
-  return upperHessEigen.norm();
+  // QR the upper Hessenberg matrix
+  Eigen::ComplexSchur<MatrixXcd> schurUH;
+  schurUH.computeFromHessenberg(upperHessEigen, Qmat);
+  
+  // Extract the upper triangular matrix, eigensolve, then
+  // get the eigenvectors of the upper Hessenberg
+  MatrixXcd matUpper = MatrixXcd::Zero(nKr, nKr);
+  matUpper = schurUH.matrixT().triangularView<Eigen::Upper>();
+  matUpper.conservativeResize(nKr, nKr);
+  Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver(matUpper);
+  Qmat = schurUH.matrixU() * eigenSolver.eigenvectors();
+  
+  // Update eigenvalues, residiua, and the Q matrix
+  for(int i=0; i<nKr; i++) {
+    evals[i] = eigenSolver.eigenvalues()[i];
+    residua[i] = abs(beta * Qmat.col(i)[nKr-1]);
+  }  
 }
 
 void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)

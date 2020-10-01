@@ -6,13 +6,13 @@ TARGET	 = iram
 SOURCES  = iram.cpp 
 OBJS     = iram.o
 INC      = $(addprefix ${INCLUDE}/, linAlgHelpers.h algoHelpers.h lapack.h)
-#LIBS     = -L/usr/local/opt/libomp/lib -lomp
+LIBS     = -L/usr/local/opt/libomp/lib -lomp -framework Accelerate /usr/local/Cellar/lapack/3.9.0_1/lib/liblapacke.dylib
 
 ERRS=-Wall
 
 CXX = g++
 CXXFLAGS = -O3 -g ${ERRS} -std=c++11 -I${EIGEN} -I${INCLUDE} 
-#OMPFLAGS = -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
+OMPFLAGS = -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
 CXXFLAGS+=${OMPFLAGS}
 
 #============================================================
