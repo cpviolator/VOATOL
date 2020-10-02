@@ -12,7 +12,7 @@ ERRS=-Wall
 
 CXX = g++
 CXXFLAGS = -O3 -g ${ERRS} -std=c++11 -I${EIGEN} -I${INCLUDE} 
-OMPFLAGS = -Xpreprocessor -fopenmp -I/usr/local/opt/libomp/include
+OMPFLAGS = -Xpreprocessor -fopenmp 
 CXXFLAGS+=${OMPFLAGS}
 
 #============================================================

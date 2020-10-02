@@ -10,10 +10,9 @@
 #include <cfloat>
 #include <random>
 #include <unistd.h>
-#include <omp.h>
 #include <sys/time.h>
 
-#define Nvec 512
+#define Nvec 2048
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
@@ -261,6 +260,7 @@ int main(int argc, char **argv) {
       // Compute Eigenvalues
       gettimeofday(&start, NULL);
       Qmat.setIdentity();
+      //eigensolveFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
       qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
       gettimeofday(&end, NULL);  
       t_EV += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;

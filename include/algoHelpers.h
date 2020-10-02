@@ -509,7 +509,7 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int nKr)
     Rmat(i, i) -= (T11 * Rmat(i, i) + T12 * Rmat(i+1, i));
     Rmat(i+1, i) = 0;
     
-#pragma omp parallel for
+#pragma omp parallel for schedule(static,32)  
     for(int j=i+1; j < nKr; j++) {
       Complex temp = Rmat(i, j);
       Rmat(i, j)   -= (T11 * Rmat(i, j) + T12 * Rmat(i+1, j));      
@@ -517,25 +517,27 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int nKr)
     }
   }
 
-  // Rotate R and V, i.e. H->RQ. V->VQ 
   for(int j = 0; j < nKr - 1; j++) {
     if(abs(R11[j]) > tol) {
-#pragma omp parallel for
-      for(int i = 0; i < j+2; i++) {
-	Complex temp = Rmat(i, j);
-	Rmat(i, j) -= (R11[j] * temp + R12[j] * Rmat(i, j+1));	
-	Rmat(i, j+1) -= (R21[j] * temp + R22[j] * Rmat(i, j+1));	
+#pragma omp parallel 
+      {
+#pragma omp for schedule(static,32)  
+	for(int i = 0; i < j+2; i++) {
+	  Complex temp = Rmat(i, j);
+	  Rmat(i, j) -= (R11[j] * temp + R12[j] * Rmat(i, j+1));	
+	  Rmat(i, j+1) -= (R21[j] * temp + R22[j] * Rmat(i, j+1));	
+	}
+	
+#pragma omp for schedule(static,32) 
+	for(int i = 0; i < nKr; i++) {
+	  Complex temp = Qmat(i, j);
+	  Qmat(i, j) -= (R11[j] * temp + R12[j] * Qmat(i, j+1));
+	  Qmat(i, j+1) -= (R21[j] * temp + R22[j] * Qmat(i, j+1));	
+	}
       }
-
-#pragma omp parallel for
-      for(int i = 0; i < nKr; i++) {
-	Complex temp = Qmat(i, j);
-	Qmat(i, j) -= (R11[j] * temp + R12[j] * Qmat(i, j+1));
-	Qmat(i, j+1) -= (R21[j] * temp + R22[j] * Qmat(i, j+1));	
-      }
-    }
-  }  
-} 
+    }  
+  }
+}
 
 int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, int nKr)
 {
