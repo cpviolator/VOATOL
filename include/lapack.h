@@ -1,5 +1,7 @@
 #pragma once
 
+extern int mat_size;
+
 void zscal(int n, Complex da, Complex *X, int incx) {
   //Scales a vector by a constant
   for(int i=0; i<n; i+=incx) {
@@ -45,7 +47,7 @@ void zlascl(double cfrom, double cto, Complex *X) {
       done = true;
     }
     
-    for(int j=0; j < Nvec; j++) X[j] *= mul;
+    for(int j=0; j < mat_size; j++) X[j] *= mul;
   }
 }
 
@@ -907,7 +909,7 @@ void givensQRUpperHess(Eigen::MatrixXcd &UH, Eigen::MatrixXcd &Q, int nKr,
   // starndards
   double unfl = DBL_MIN;
   double ulp = DBL_EPSILON;
-  double smlnum = unfl*(Nvec/ulp);
+  double smlnum = unfl*(mat_size/ulp);
   
   //%----------------------------------------%
   //| Check for splitting and deflation. Use |

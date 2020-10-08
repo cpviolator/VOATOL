@@ -2,40 +2,42 @@
 
 #include <omp.h>
 
+extern int mat_size;
+
 //Simple Complex Linear Algebra Helpers
 void zero(Complex *x) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) x[i] = 0.0;
+  for(int i=0; i<mat_size; i++) x[i] = 0.0;
 }
 
 void copy(Complex *x, Complex *y) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) x[i] = y[i];
+  for(int i=0; i<mat_size; i++) x[i] = y[i];
 }
 
 void ax(double a, Complex *x) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) x[i] *= a;
+  for(int i=0; i<mat_size; i++) x[i] *= a;
 }
 
 void cax(Complex a, Complex *x) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) x[i] *= a;
+  for(int i=0; i<mat_size; i++) x[i] *= a;
 }
 
 void axpy(double a, Complex *x, Complex *y) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) y[i] += a*x[i];
+  for(int i=0; i<mat_size; i++) y[i] += a*x[i];
 }
 
 void caxpy(Complex a, Complex *x, Complex *y) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) y[i] += a*x[i];
+  for(int i=0; i<mat_size; i++) y[i] += a*x[i];
 }
 
 void axpby(double a, Complex *x, double b, Complex *y) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) {
+  for(int i=0; i<mat_size; i++) {
     y[i] *= b;
     y[i] += a*x[i];
   }
@@ -43,7 +45,7 @@ void axpby(double a, Complex *x, double b, Complex *y) {
 
 void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 #pragma omp parallel for
-  for(int i=0; i<Nvec; i++) {
+  for(int i=0; i<mat_size; i++) {
     y[i] *= b;
     y[i] += a*x[i];
   }
@@ -52,27 +54,27 @@ void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 Complex dotProd(Complex *x, Complex *y) {
   Complex prod = 0.0;
 #pragma omp parallel for reduction(+:prod) 
-  for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
+  for(int i=0; i<mat_size; i++) prod += x[i]*y[i];
   return prod;
 }
 
 Complex dotProdMatVec(Complex *x, Complex *y) {
   Complex prod = 0.0;
-  for(int i=0; i<Nvec; i++) prod += x[i]*y[i];
+  for(int i=0; i<mat_size; i++) prod += x[i]*y[i];
   return prod;
 }
 
 Complex cDotProd(const Complex *x, const Complex *y) {
   Complex prod = 0.0;
 #pragma omp parallel for reduction(+:prod) 
-  for(int i=0; i<Nvec; i++) prod += conj(x[i])*y[i];
+  for(int i=0; i<mat_size; i++) prod += conj(x[i])*y[i];
   return prod;
 }
 
 double norm2(Complex *x) {
   double sum = 0.0;
 #pragma omp parallel for reduction(+:sum)
-  for(int i=0; i<Nvec; i++) sum += (conj(x[i])*x[i]).real();
+  for(int i=0; i<mat_size; i++) sum += (conj(x[i])*x[i]).real();
   return sum;
 }
 
@@ -98,11 +100,11 @@ void orthogonalise(Complex *r, std::vector<Complex*> vectorSpace, int j) {
 
 void matVec(Complex **mat, Complex *out, Complex *in) {
   
-  Complex temp[Nvec];
+  Complex temp[mat_size];
   zero(temp);
   //Loop over rows of matrix
 #pragma omp parallel for 
-  for(int i=0; i<Nvec; i++) {
+  for(int i=0; i<mat_size; i++) {
     temp[i] = dotProdMatVec(&mat[i][0], in);    
   }
   copy(out, temp);  
@@ -124,9 +126,9 @@ void chebyOp(Complex **mat, Complex *out, Complex *in, double a, double b, int p
   matVec(mat, out, in);
   caxpby(d2, in, d1, out);
   
-  Complex tmp1[Nvec];
-  Complex tmp2[Nvec];
-  Complex tmp3[Nvec];
+  Complex tmp1[mat_size];
+  Complex tmp2[mat_size];
+  Complex tmp3[mat_size];
   
   copy(tmp1, in);
   copy(tmp2, out);

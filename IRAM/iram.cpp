@@ -1,4 +1,3 @@
-#include <vector>
 #include <iostream>
 #include <stdio.h>
 #include <fstream>
@@ -12,11 +11,14 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-#define Nvec 2048
+int mat_size = 128;
+
 #include "Eigen/Eigenvalues"
 using namespace std;
 using Eigen::MatrixXcd;
 using Eigen::MatrixXd;
+
+bool verbose = false;
 
 #define Complex complex<double>
 #include "algoHelpers.h"
@@ -37,36 +39,38 @@ int main(int argc, char **argv) {
   double t_EV = 0.0;  
 
   // START init
-  //---------------------------------------------------------
+  //---------------------------------------------------------  
   gettimeofday(&start, NULL);  
-  if (argc < 11 || argc > 11) {
-    cout << "Built for matrix size " << Nvec << endl;
-    cout << "./irlm <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
-    exit(0);
-  }
-  
-  int nKr = atoi(argv[1]);
-  int nEv = atoi(argv[2]);
-  int nConv = atoi(argv[3]);
-  int max_restarts = atoi(argv[4]);
-  double diag = atof(argv[5]);
-  double tol = atof(argv[6]);
-  int spectrum = atoi(argv[7]);
-  bool symm = (atoi(argv[8]) == 1 ? true : false);
-  bool verbose = (atoi(argv[9]) == 1 ? true : false);
-  bool eigen_check = (atoi(argv[10]) == 1 ? true : false);
-   
-  if (!(nKr > nEv + 6)) {
-    printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
+  if (argc < 12 || argc > 12) {
+    cout << "./irlm <mat_size> <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
     exit(0);
   }
 
-  if (nEv > Nvec || nKr > Nvec) {
-    printf("nKr=%d and nEv=%d must be less than Nvec=%d\n", nKr, nEv, Nvec);
+  mat_size = atoi(argv[1]);
+  int nKr = atoi(argv[2]);
+  int nEv = atoi(argv[3]);
+  int nConv = atoi(argv[4]);
+  int max_restarts = atoi(argv[5]);
+  double diag = atof(argv[6]);
+  double tol = atof(argv[7]);
+  int spectrum = atoi(argv[8]);
+  bool symm = (atoi(argv[9]) == 1 ? true : false);
+  bool verbose = (atoi(argv[10]) == 1 ? true : false);
+  bool eigen_check = (atoi(argv[11]) == 1 ? true : false);
+
+  if (nKr != mat_size) {
+    if (!(nKr > nEv + 6)) {
+      printf("nKr=%d must be greater than nEv+6=%d\n", nKr, nEv + 6);
+      exit(0);
+    }
+  } else if (nKr == mat_size) {
+    printf("nKr=mat_size=%d Computing a complete Arnoldi factorisation\n", nKr);
+  } else if (nEv > mat_size || nKr > mat_size) {
+    printf("nKr=%d and nEv=%d must be less than mat_size=%d\n", nKr, nEv, mat_size);
     exit(0);
   }
 
-  printf("Mat size = %d\n", Nvec);
+  printf("Mat size = %d\n", mat_size);
   printf("nKr = %d\n", nKr);
   printf("nEv = %d\n", nEv);
   printf("nConv = %d\n", nConv);
@@ -76,16 +80,15 @@ int main(int argc, char **argv) {
     
   // Construct a matrix using Eigen.
   //---------------------------------------------------------------------
-  gettimeofday(&start, NULL); 
-  MatrixXcd ref = MatrixXcd::Random(Nvec, Nvec);
-  MatrixXcd diagonal = MatrixXcd::Identity(Nvec, Nvec);
+  MatrixXcd ref = MatrixXcd::Random(mat_size, mat_size);
+  MatrixXcd diagonal = MatrixXcd::Identity(mat_size, mat_size);
   diagonal *= diag;
   
   //Copy Eigen ref matrix.
-  Complex **mat = (Complex**)malloc(Nvec*sizeof(Complex*));
-  for(int i=0; i<Nvec; i++) {
-    mat[i] = (Complex*)malloc(Nvec*sizeof(Complex));
-    for(int j=0; j<Nvec; j++) {
+  Complex **mat = (Complex**)malloc(mat_size*sizeof(Complex*));
+  for(int i=0; i<mat_size; i++) {
+    mat[i] = (Complex*)malloc(mat_size*sizeof(Complex));
+    for(int j=0; j<mat_size; j++) {
       mat[i][j] = ref(i,j);
       if(symm) mat[i][j] += conj(ref(j,i));
       if(i == j) mat[i][j] += diag;
@@ -94,7 +97,6 @@ int main(int argc, char **argv) {
 
   // Construct objects for IRAM.
   //---------------------------------------------------------------------
-  gettimeofday(&start, NULL); 
   //Eigenvalues and their residua
   std::vector<double> residua(nKr, 0.0);
   std::vector<Complex> evals(nKr, 0.0);
@@ -102,7 +104,7 @@ int main(int argc, char **argv) {
   // Krylov Space.
   std::vector<Complex*> kSpace(nKr);
   for(int i=0; i<nKr; i++) {
-    kSpace[i] = (Complex*)malloc(Nvec*sizeof(Complex));
+    kSpace[i] = (Complex*)malloc(mat_size*sizeof(Complex));
     zero(kSpace[i]);
   }
 
@@ -112,7 +114,7 @@ int main(int argc, char **argv) {
   // Residual vector(s). Also used as temp vector(s)
   std::vector<Complex*> r(1);
   for(int i=0; i<1; i++) {
-    r[i] = (Complex*)malloc(Nvec*sizeof(Complex));
+    r[i] = (Complex*)malloc(mat_size*sizeof(Complex));
     zero(r[i]);
   }
 
@@ -129,7 +131,7 @@ int main(int argc, char **argv) {
   int iter_converged = 0;
   int iter_keep = 0;
   int num_converged = 0;
-  int num_keep = 0;
+  int num_keep = 0;  
   // END init
   //---------------------------------------------------------
   gettimeofday(&end, NULL);  
@@ -139,7 +141,7 @@ int main(int argc, char **argv) {
   //---------------------------------------------------------------------
   gettimeofday(&start, NULL);  
   Eigen::ComplexEigenSolver<MatrixXcd> eigenSolver;
-  std::vector<Complex> eigen_evals(Nvec, 0.0);
+  std::vector<Complex> eigen_evals(mat_size, 0.0);
   if(eigen_check) {
     printf("START EIGEN SOLUTION\n");
     if(symm) eigenSolver.compute(ref + ref.adjoint() + diagonal);
@@ -148,7 +150,7 @@ int main(int argc, char **argv) {
     t_eigen += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
     printf("END EIGEN SOLUTION\n");
     printf("Time to solve problem using Eigen = %e\n", t_eigen);
-    for(int i=0; i<Nvec; i++) eigen_evals[i] = eigenSolver.eigenvalues()[i];
+    for(int i=0; i<mat_size; i++) eigen_evals[i] = eigenSolver.eigenvalues()[i];
   }
   //-----------------------------------------------------------------------
 
@@ -158,7 +160,7 @@ int main(int argc, char **argv) {
   gettimeofday(&start, NULL);  
   // Populate source with randoms.
   printf("Using random guess\n");
-  for(int i=0; i<Nvec; i++) {
+  for(int i=0; i<mat_size; i++) {
     r[0][i].real(drand48());
     r[0][i].imag(drand48());    
   }
@@ -173,7 +175,7 @@ int main(int argc, char **argv) {
   //----------------------------------------------------------------------
 
   // Do the first nEv steps
-  for (int step = 0; step < nEv; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
+  for (int step = 0; step < nEv; step++) arnoldiStep(mat, kSpace, upperHessEigen, r, beta, step);
   num_keep = nEv;
   iter += nEv;
   gettimeofday(&end, NULL);  
@@ -183,7 +185,7 @@ int main(int argc, char **argv) {
   while(restart_iter < max_restarts && !converged) {
 
     gettimeofday(&start, NULL); 
-    for (int step = num_keep; step < nKr; step++) arnoldiStepArpack(mat, kSpace, upperHessEigen, r, beta, step);
+    for (int step = num_keep; step < nKr; step++) arnoldiStep(mat, kSpace, upperHessEigen, r, beta, step);
     iter += (nKr - num_keep);
     gettimeofday(&end, NULL);  
     t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
@@ -211,7 +213,7 @@ int main(int argc, char **argv) {
     
     // Convergence test
     iter_converged = 0;
-    for(int i=0; i<nConv; i++) {
+    for(int i=0; i<nEv; i++) {
       int idx = dim - 1 - i;
       double rtemp = std::max(epsilon23, abs(evals[idx]));
       if(residua[idx] < tol * rtemp) {
@@ -232,18 +234,6 @@ int main(int argc, char **argv) {
     //       | no shifts may be applied, then prepare to exit          |
     //       %---------------------------------------------------------%
     
-    int nshifts0 = nshifts;
-    for(int i=0; i<nshifts0; i++) {
-      if(residua[i] <= epsilon) {
-	nshifts--;
-      }
-    }
-    
-    if(nshifts == 0) {
-      cout << "No shifts can be applied" << endl;
-      exit(0);
-    }    
-
     int num_keep0 = num_keep;
     iter_keep = std::min(iter_converged + (nKr - num_converged) / 2, nKr - 12);
     
@@ -252,15 +242,27 @@ int main(int argc, char **argv) {
     nshifts = nKr - num_keep;
 
     printf("%04d converged eigenvalues at iter %d\n", num_converged, restart_iter);
-    gettimeofday(&end, NULL);  
+
+    int nshifts0 = nshifts;
+    for(int i=0; i<nshifts0; i++) {
+      if(residua[i] <= epsilon) {
+	nshifts--;
+      }
+    }
+    
+    if(nshifts == 0 && num_converged < nEv) {
+      cout << "No shifts can be applied" << endl;
+      exit(0);
+    }    
+    
+    gettimeofday(&end, NULL);
     t_sort += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
     
-    if (num_converged >= nConv || nEv == Nvec) {
+    if (num_converged >= nConv || nEv == mat_size) {
       converged = true;
       // Compute Eigenvalues
       gettimeofday(&start, NULL);
       Qmat.setIdentity();
-      //eigensolveFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
       qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
       gettimeofday(&end, NULL);  
       t_EV += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
@@ -285,8 +287,7 @@ int main(int argc, char **argv) {
       if(num_keep0 < num_keep) {
 	gettimeofday(&start, NULL); 
 	// Emulate zngets: sort the unwanted Ritz to the start of the arrays, then
-	// sort the first (nKr - nEv) bounds to be first for forward stability
-	
+	// sort the first (nKr - nEv) bounds to be first for forward stability	
 	// Sort to put unwanted Ritz(evals) first
 	zsortc(spectrum, dim, evals, residua);
 	// Sort to put smallest Ritz errors(residua) first
@@ -304,22 +305,12 @@ int main(int argc, char **argv) {
       gettimeofday(&start, NULL); 
       Qmat.setIdentity();
       sigma.setIdentity();      
-      for(int i=0; i<nshifts; i++){
-	
-	if(verbose) cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	
+      for(int i=0; i<nshifts; i++){	
 	sigma.setIdentity();
 	sigma *= evals[i];
-	if(verbose) printf("Projecting out ||(%e,%e)|| = %e\n", evals[i].real(), evals[i].imag(), abs(evals[nshifts + i]));
 	upperHessEigen -= sigma;
 	qriteration(upperHessEigen, Qmat, dim);	
-	upperHessEigen += sigma;
-	
-	if(verbose) {
-	  cout << "symm test = " << (upperHessEigen - upperHessEigen.adjoint()).norm() << endl << endl;
-	  MatrixXcd Id = MatrixXcd::Identity(dim, dim);
-	  cout << "Unitarity test " << (Qmat * Qmat.adjoint() - Id).norm() << endl << endl;    
-	}
+	upperHessEigen += sigma;	
       }
       gettimeofday(&end, NULL);  
       t_QR += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
@@ -343,7 +334,7 @@ int main(int argc, char **argv) {
 	printf("Congratulations! You have reached an invariant subspace at iter %d, beta = %e\n", restart_iter, norm(r[0]));
 	
 	printf("Using random guess\n");
-	for(int i=0; i<Nvec; i++) {
+	for(int i=0; i<mat_size; i++) {
 	  kSpace[num_keep][i].real(drand48());
 	  kSpace[num_keep][i].imag(drand48());    
 	}
@@ -377,18 +368,18 @@ int main(int argc, char **argv) {
   
   // Post computation report  
   if (!converged) {    
-    printf("IRAM failed to compute the requested %d vectors with with a %d search space and a %d Krylov space in %d restart_steps and %d OPs\n", nConv, nEv, nKr, restart_iter, iter);
+    printf("IRAM failed to compute the requested %d vectors with with a %d search space and a %d Krylov space in %d restart_steps and %d OPs.\n", nConv, nEv, nKr, restart_iter, iter);
   } else {
-    printf("IRAM computed the requested %d vectors with a with a %d search space and a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nConv, nEv, nKr, restart_iter, iter, (t_compute + t_init + t_sort + t_EV + t_QR));
+    printf("IRAM computed the requested %d vectors with a %d search space and a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nConv, nEv, nKr, restart_iter, iter, (t_compute + t_sort + t_EV + t_QR));
 
     if(eigen_check) {
       // sort the eigen eigenvalues by the requested spectrum. The wanted values
       // will appear at the end of the array. We need a dummy residua array to use
       // the sorting function.
-      std::vector<double> res_dummy(Nvec, 0.0);
-      zsortc(spectrum, Nvec, eigen_evals, res_dummy);
+      std::vector<double> res_dummy(mat_size, 0.0);
+      zsortc(spectrum, mat_size, eigen_evals, res_dummy);
       for (int i = 0; i < nConv; i++) {
-	int idx_e = Nvec - 1 - i;
+	int idx_e = mat_size - 1 - i;
 	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = "
 	       "(%+.8e,%+.8e)\n", i,
 	       evals[i].real(), evals[i].imag(),
@@ -398,8 +389,6 @@ int main(int argc, char **argv) {
 	       (evals[i].imag() - eigen_evals[idx_e].imag())/eigen_evals[idx_e].imag());
       }
     } else {
-      // "reorder" places the wanted eigenvalues and eigenvectors at the start of the
-      // array
       for (int i = 0; i < nConv; i++) {
 	printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
       }
