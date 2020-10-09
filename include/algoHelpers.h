@@ -10,7 +10,6 @@ std::vector<Complex> block_ritz_mat;
 
 //Functions used in the lanczos algorithm
 //---------------------------------------
-
 void iterRefineReal(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, std::vector<double> &alpha, std::vector<double> &beta, int j) {
   
   std::vector<Complex> s(j+1);

@@ -24,6 +24,7 @@ bool verbose = false;
 #include "linAlgHelpers.h"
 #include "algoHelpers.h"
 #include "lapack.h"
+#include "io.h"
 
 int main(int argc, char **argv) {
 
@@ -35,7 +36,8 @@ int main(int argc, char **argv) {
   double t_sort = 0;
   double t_eigen = 0.0;
   double t_compute = 0.0;
-  double t_EV = 0.0;  
+  double t_EV = 0.0;
+  double t_IO = 0.0;  
 
   // START init
   //---------------------------------------------------------
@@ -177,6 +179,12 @@ int main(int argc, char **argv) {
   // Loop over restart iterations.
   while(restart_iter < max_restarts && !converged) {
 
+    string testy = "test";
+    gettimeofday(&start, NULL);  
+    if(iter > 0) loadTRLMSolverState(mat, kSpace, alpha, beta, testy);
+    gettimeofday(&end, NULL);  
+    t_IO += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+  
     gettimeofday(&start, NULL);     
     // (2) p = m-k steps to get to the m-step factorisation
     for (int step = num_keep; step < nKr; step++) {
@@ -256,13 +264,18 @@ int main(int argc, char **argv) {
     if (num_converged >= nConv) {
       gettimeofday(&start, NULL);
       for(int i=0; i<nKr; i++) evals[i].real(alpha[i]);
-      reorder(kSpace, evals, residua, nKr, spectrum);
+      reorder(kSpace, evals, residua, nKr, (reverse ? spectrum-1 : spectrum+1));
       computeEvals(mat, kSpace, residua, evals, nKr);
-      gettimeofday(&end, NULL);  
+      gettimeofday(&end, NULL);
       t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
       converged = true;
     }    
-    restart_iter++;    
+    restart_iter++;
+    //string testy = "test";
+    gettimeofday(&start, NULL);  
+    saveTRLMSolverState(mat, kSpace, alpha, beta, testy);
+    gettimeofday(&end, NULL);  
+    t_IO += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
   }
 
   gettimeofday(&total_end, NULL);  
@@ -287,8 +300,8 @@ int main(int argc, char **argv) {
       std::vector<double> res_dummy(mat_size, 0.0);
       zsortc(spectrum+2, mat_size, eigen_evals, res_dummy);
       for (int i = 0; i < nConv; i++) {
-	//int idx_e = mat_size - 1 - i;
-	int idx_e = i;
+	int idx_e = mat_size - 1 - i;
+	//int idx_e = i;
 	printf("EigenComp[%04d]: [(%+.8e, %+.8e) - (%+.8e, %+.8e)]/(%+.8e, %+.8e) = "
 	       "(%+.8e,%+.8e)\n", i,
 	       evals[i].real(), evals[i].imag(),
@@ -310,8 +323,7 @@ int main(int argc, char **argv) {
   cout << "compute = " << t_compute << endl;
   cout << "sort = " << t_sort << endl;
   cout << "EV = " << t_EV << endl;
-  cout << "missing = " << (t_total) << " - " << (t_compute + t_init + t_sort + t_EV + t_eigen) << " = " << (t_total - (t_compute + t_init + t_sort + t_EV + t_eigen)) << " ("<<(100*((t_total - (t_compute + t_init + t_sort + t_EV + t_eigen))))/t_total<<"%)" << endl;
-  
-
+  cout << "IO = " << t_IO << endl;
+  cout << "missing = " << (t_total) << " - " << (t_compute + t_init + t_sort + t_EV + t_eigen + t_IO) << " = " << (t_total - (t_compute + t_init + t_sort + t_EV + t_eigen + t_IO)) << " ("<<(100*((t_total - (t_compute + t_init + t_sort + t_EV + t_eigen + t_IO))))/t_total<<"%)" << endl;
   
 }
