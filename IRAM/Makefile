@@ -1,5 +1,6 @@
 #Your path to Eigen
-EIGEN=../../Eigen
+EIGEN=../externals/eigen
+EIGEN_COMPRESS=../externals/eigen-comp
 INCLUDE=../include
 
 TARGET	 = iram 
@@ -25,7 +26,7 @@ iram: ${OBJS}
 iram.o: iram.cpp ${INC}
 	${CXX} ${CXXFLAGS} -c iram.cpp
 
-ALL_SOURCES = Makefile $(SOURCES) 
+ALL_SOURCES = Makefile $(SOURCES) $(INC)
 
 clean:
 	rm -f $(TARGET) $(OBJS) 

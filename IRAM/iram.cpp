@@ -196,7 +196,7 @@ int main(int argc, char **argv) {
     // Compute Ritz and bounds
     gettimeofday(&start, NULL);  
     //eigensolveFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
-    qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
+    qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr, tol/10);
     gettimeofday(&end, NULL);  
     t_EV += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
     
@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
       // Compute Eigenvalues
       gettimeofday(&start, NULL);
       Qmat.setIdentity();
-      qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr);
+      qrFromUpperHess(upperHessEigen, Qmat, evals, residua, beta, nKr, 1e-15);
       gettimeofday(&end, NULL);  
       t_EV += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
       
@@ -309,7 +309,7 @@ int main(int argc, char **argv) {
 	sigma.setIdentity();
 	sigma *= evals[i];
 	upperHessEigen -= sigma;
-	qriteration(upperHessEigen, Qmat, dim);	
+	qriteration(upperHessEigen, Qmat, dim, tol/10);	
 	upperHessEigen += sigma;	
       }
       gettimeofday(&end, NULL);  
@@ -372,6 +372,10 @@ int main(int argc, char **argv) {
   } else {
     printf("IRAM computed the requested %d vectors with a %d search space and a %d Krylov space in %d restart_steps and %d OPs in %e secs.\n", nConv, nEv, nKr, restart_iter, iter, (t_compute + t_sort + t_EV + t_QR));
 
+    for (int i = 0; i < nConv; i++) {
+      printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
+    }
+    
     if(eigen_check) {
       // sort the eigen eigenvalues by the requested spectrum. The wanted values
       // will appear at the end of the array. We need a dummy residua array to use
@@ -387,10 +391,6 @@ int main(int argc, char **argv) {
 	       eigen_evals[idx_e].real(), eigen_evals[idx_e].imag(),
 	       (evals[i].real() - eigen_evals[idx_e].real())/eigen_evals[idx_e].real(),
 	       (evals[i].imag() - eigen_evals[idx_e].imag())/eigen_evals[idx_e].imag());
-      }
-    } else {
-      for (int i = 0; i < nConv; i++) {
-	printf("EigValue[%04d]: ||(%+.8e, %+.8e)|| = %+.8e residual %.8e\n", i, evals[i].real(), evals[i].imag(), abs(evals[i]), residua[i]);
       }
     }
   }

@@ -255,7 +255,8 @@ int main(int argc, char **argv) {
     // Check for convergence
     if (num_converged >= nConv) {
       gettimeofday(&start, NULL);
-      reorder(kSpace, alpha, nKr, reverse);
+      for(int i=0; i<nKr; i++) evals[i].real(alpha[i]);
+      reorder(kSpace, evals, residua, nKr, spectrum);
       computeEvals(mat, kSpace, residua, evals, nKr);
       gettimeofday(&end, NULL);  
       t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;

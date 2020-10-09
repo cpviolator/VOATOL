@@ -3,6 +3,7 @@
 #include <omp.h>
 
 extern int mat_size;
+extern bool verbose;
 
 //Simple Complex Linear Algebra Helpers
 void zero(Complex *x) {
@@ -25,12 +26,12 @@ void cax(Complex a, Complex *x) {
   for(int i=0; i<mat_size; i++) x[i] *= a;
 }
 
-void axpy(double a, Complex *x, Complex *y) {
+void axpy(double a, const Complex *x, Complex *y) {
 #pragma omp parallel for
   for(int i=0; i<mat_size; i++) y[i] += a*x[i];
 }
 
-void caxpy(Complex a, Complex *x, Complex *y) {
+void caxpy(Complex a, const Complex *x, Complex *y) {
 #pragma omp parallel for
   for(int i=0; i<mat_size; i++) y[i] += a*x[i];
 }
@@ -227,9 +228,9 @@ void updateBlockBeta(std::vector<Complex> tmp, std::vector<Complex> &beta, int k
     for(int b=0; b<block_size; b++) {
       for(int c=0; c<block_size; c++) {
 	idx = b*block_size + c;
-	printf("(%e,%e) ", tmp[idx].real(), tmp[idx].imag()); 
+	//printf("(%e,%e) ", tmp[idx].real(), tmp[idx].imag()); 
       }
-      printf("\n");
+      //printf("\n");
     }
     betaNEigen = RkEigen * betaEigen;
     for(int b=0; b<block_size; b++) {
@@ -243,9 +244,9 @@ void updateBlockBeta(std::vector<Complex> tmp, std::vector<Complex> &beta, int k
   for(int b=0; b<block_size; b++) {
     for(int c=0; c<block_size; c++) {
       idx = b*block_size + c;
-      printf("(%e,%e) ", beta[block_offset + idx].real(), beta[block_offset + idx].imag()); 
+      //printf("(%e,%e) ", beta[block_offset + idx].real(), beta[block_offset + idx].imag()); 
     }
-    printf("\n");
+    //printf("\n");
   }
 }
 
@@ -268,7 +269,7 @@ void gramSchmidtRecursive(std::vector<Complex*> &vecs, std::vector<Complex> &bet
   bool orthed = false;
   int idx=0, idx_conj=0, k=0;
   while(!orthed && k < k_max) {
-    printf("Orthing iter %d\n", k);
+    if(verbose) printf("Orthing iter %d\n", k);
     // Compute R_{k}
     for(int b=0; b<block_size; b++) {
       for(int c=0; c<b; c++) {

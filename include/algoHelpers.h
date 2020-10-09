@@ -1,6 +1,7 @@
 #pragma once
 
 extern int mat_size;
+extern bool verbose;
 
 #include "linAlgHelpers.h"
 
@@ -53,8 +54,8 @@ void CAXPY(std::vector<Complex*> vecs, std::vector<Complex*> &r, std::vector<Com
 void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, std::vector<Complex> &alpha, std::vector<Complex> &beta, int j) {
 
   int block_size = (int)r.size();
-  int alpha_block_offset = j * block_size;
-  int beta_block_offset  = (j - block_size) * block_size;
+  //int alpha_block_offset = j * block_size;
+  //int beta_block_offset  = (j - block_size) * block_size;
   
   // r = r - s_{i} * v_{i}
   std::vector<Complex> s((j + block_size) * block_size, 0.0);
@@ -291,38 +292,6 @@ void reorder(std::vector<Complex*> &kSpace, std::vector<Complex> evals, std::vec
 }
 
 
-void reorder(std::vector<Complex*> &kSpace, std::vector<double> alpha, int nKr, bool reverse) {
-  int i = 0;
-  Complex temp[mat_size];
-  if (reverse) {
-    while (i < nKr) {
-      if ((i == 0) || (alpha[i - 1] >= alpha[i]))
-	i++;
-      else {
-	double tmp = alpha[i];
-	alpha[i] = alpha[i - 1];
-	alpha[--i] = tmp;
-	copy(temp, kSpace[i]);
-	copy(kSpace[i], kSpace[i-1]);
-	copy(kSpace[i-1], temp);
-      }
-    }
-  } else {
-    while (i < nKr) {
-      if ((i == 0) || (alpha[i - 1] <= alpha[i])) 
-	i++;
-      else {
-	double tmp = alpha[i];
-	alpha[i] = alpha[i - 1];
-	alpha[--i] = tmp;
-	copy(temp, kSpace[i]);
-	copy(kSpace[i], kSpace[i-1]);
-	copy(kSpace[i-1], temp);
-      }
-    }
-  }
-}
-
 void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 		      std::vector<Complex> &beta, std::vector<Complex> &alpha,
 		      std::vector<Complex*> &r, int num_keep, int j, int block_size,
@@ -387,10 +356,10 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 
 
 
-double eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
-			       std::vector<Complex> &evals,
-			       std::vector<double> &residua,
-			       const double beta, int nKr)
+void eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
+			    std::vector<Complex> &evals,
+			    std::vector<double> &residua,
+			    const double beta, int nKr)
 {
   // QR the upper Hessenberg matrix
   Eigen::ComplexSchur<MatrixXcd> schurUH;
@@ -412,13 +381,11 @@ double eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
   }  
 }
 
-void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int nKr)
+void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, const int nKr, const double tol)
 {  
   Complex T11, T12, T21, T22, U1, U2;
   double dV;
 
-  double tol = 1e-15;
-  
   // Allocate the rotation matrices.
   std::vector<Complex> R11(nKr-1);
   std::vector<Complex> R12(nKr-1);
@@ -484,13 +451,12 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int nKr)
   }
 }
 
-int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, int nKr)
+int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, const int nKr, const double tol)
 {
 
   MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
   Rmat = upperHess;
   
-  double tol = 1e-15;
   Complex temp, discriminant, sol1, sol2, eval;
   int max_iter = 100000;
   int iter = 0;
@@ -522,7 +488,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
 	for(int j = 0; j < nKr; j++) Rmat(j, j) -= eval;
 	
 	// Do the QR iteration
-	qriteration(Rmat, Qmat, nKr);
+	qriteration(Rmat, Qmat, nKr, tol);
 	
 	// Shift back
 	for(int j = 0; j < nKr; j++) Rmat(j, j) += eval;
@@ -543,8 +509,8 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
     residua[i] = abs(beta * Qmat.col(i)[nKr-1]);
   }
   
-  printf("eigensystem iterations = %d\n", iter);
-
+  printf("QR iterations = %d\n", iter);
+  
   return iter;  
 }
 
@@ -594,16 +560,13 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
     for (int j = 0; j < dim; j++) {
       //Place data in COLUMN major 
       ritz_mat[dim * i + j] = eigenSolver.eigenvectors().col(i)[j];
-      //printf("%+.4e ",ritz_mat[dim * i + j]);      
     }
-    //printf("\n");
   }
   
   for (int i = 0; i < dim; i++) {
     residua[i + num_locked] = fabs(beta[nKr - 1] * eigenSolver.eigenvectors().col(i)[dim - 1]);
     // Update the alpha array
     alpha[i + num_locked] = eigenSolver.eigenvalues()[i];
-    //printf("EFAM: resid = %e, alpha = %e\n", residua[i + num_locked], alpha[i + num_locked]);
   }
 
   // Put spectrum back in order
@@ -612,7 +575,7 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
   }  
 }
 
-void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<Complex> &arrow_eigs, std::vector<double> &residua, bool reverse) {
+void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<double> &arrow_eigs, std::vector<double> &residua, bool reverse) {
 
   int block_data_length = block_size * block_size;
   int dim = nKr - num_locked;

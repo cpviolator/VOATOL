@@ -607,7 +607,7 @@ void zgeqr2(int M, int N, Eigen::MatrixXcd &A, Complex *tau) {
     zlarfg(M-i, A(i,i), X, 1, tau[i]);
     cout << "Aii post = " << A(i,i) << endl;
     cout << "tau post = " << tau[i] << endl;
-    //cout << "tau - A(i,i) pre = " << tau[i] - Aiipre << endl;
+    cout << "tau - A(i,i) pre = " << tau[i] - Aiipre << endl;
     
     for(int l=0; l<M; l++)
       for(int j=0; j<M; j++)
@@ -735,7 +735,7 @@ void znapps(int num_keep, int nshifts, std::vector<Complex> ritz_vals, Eigen::Ma
 	
 	Complex t = 0.0;
 	for(int j=i; j<dim; j++) {
-	  Complex t = c*upperHess(i,j) + s*upperHess(i+1,j);
+	  t = c*upperHess(i,j) + s*upperHess(i+1,j);
 	  upperHess(i+1,j) = -conj(s)*upperHess(i,j) + c*upperHess(i+1,j);
 	  upperHess(i,j) = t;
 	}
