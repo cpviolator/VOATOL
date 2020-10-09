@@ -1,15 +1,15 @@
 #pragma once
 
+extern int mat_size;
+extern bool verbose;
+
 #include "linAlgHelpers.h"
 
 std::vector<double> ritz_mat;
 std::vector<Complex> block_ritz_mat;
 
-extern bool verbose;
-
 //Functions used in the lanczos algorithm
 //---------------------------------------
-
 void iterRefineReal(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, std::vector<double> &alpha, std::vector<double> &beta, int j) {
   
   std::vector<Complex> s(j+1);
@@ -69,8 +69,8 @@ void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, st
     for(int i=0; i<block_size; i++) {
       for(int k=0; k<block_size; k++) {
 	idx = i*block_size + k;
-	//alpha[alpha_block_offset + idx] += s[alpha_block_offset + idx];
-	//if(j>0) beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
+	alpha[alpha_block_offset + idx] += s[alpha_block_offset + idx];
+	if(j>0) beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
       }
     }    
     count++;
@@ -86,7 +86,7 @@ void lanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
   
   //Compute r = A * v_j - b_{j-i} * v_{j-1}      
   //r = A * v_j
-  if(a_min == 0.0 || a_max == 0.0) matVec(mat, r[0], kSpace[j]);
+  if(a_min == 0.0 || a_max == 0.0 || poly_deg == 0 || poly_deg == 1) matVec(mat, r[0], kSpace[j]);
   else chebyOp(mat, r[0], kSpace[j], a_min, a_max, poly_deg);
 
   //a_j = v_j^dag * r
@@ -113,64 +113,9 @@ void lanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
   copy(kSpace[j+1], r[0]);
 }
 
-#if 0
 void arnoldiStep(Complex **mat, std::vector<Complex*> &kSpace,
-		 std::vector<Complex*> &upperHess,
-		 std::vector<Complex*> &r, int j) {
-  
-  matVec(mat, r[0], kSpace[j]);
-
-  double norm_pre = norm(r[0]);
-
-  //H_{j,i}_j = v_i^dag * r
-  for (int i = 0; i < j+1; i++) {
-    upperHess[i][j] = cDotProd(kSpace[i], r[0]);
-    //printf("upperHess[%d][%d] = (%e,%e)\n", i, j, upperHess[i][j].real(), upperHess[i][j].imag());
-    caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
-  }
-  
-  //r = r - H_{j,i} * v_j 
-  for (int i = 0; i < j+1; i++) {
-    //caxpy(-1.0*upperHess[i][j], kSpace[i], r[0]);
-  }
-  
-  double norm_post = norm(r[0]);
-  upperHess[j+1][j].real(norm_post);
-  //printf("Residual norm = %e\n", norm_post); 
-
-  if(norm_post < 1e-12 || norm_pre < 1e-12){
-    printf("Congratulations! You have reached an invariant subspace at iter %d, beta_pre = %e, beta_post = %e\n", j, norm_pre, norm_post);
-    //exit(0);
-  }
-
-  // Orthogonalise r against the K space  
-  if(norm_post < 0.717*norm_pre) {
-    
-    // reorthogonalise r against the K space
-    printf("beta = %e < %e: Reorthogonalise at step %d\n", norm_post, 0.717*norm_pre, j);
-    std::vector<Complex> alpha(j+1, 0.0);
-    for(int i=0; i < j+1; i++) {
-      //alpha[i] = dotProd(kSpace[i], r[0]);
-      alpha[i] = cDotProd(kSpace[i], r[0]);
-      upperHess[i][j] += alpha[i];
-      caxpy(-1.0*alpha[i], kSpace[i], r[0]);
-    }
-    for(int i=0; i < j+1; i++) {
-      //upperHess[i][j] += alpha[i];
-      //caxpy(-1.0*alpha[i], kSpace[i], r[0]);
-    }    
-  }
-  
-  //Prepare next step.
-  normalise(r[0]);
-  copy(kSpace[j+1], r[0]);
-}
-#endif
-
-#if 1
-void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
-		       Eigen::MatrixXcd &upperHessEigen,
-		       std::vector<Complex*> &r, double &beta, int j) {
+		 Eigen::MatrixXcd &upperHessEigen,
+		 std::vector<Complex*> &r, double &beta, int j) {
 
   //%---------------------------------------------------%
   //| STEP 1: Check if the B norm of j-th residual      |
@@ -290,8 +235,6 @@ void arnoldiStepArpack(Complex **mat, std::vector<Complex*> &kSpace,
   }
 }
 
-#endif
-
 void reorder(std::vector<Complex*> &kSpace, std::vector<Complex> evals, std::vector<double> residua, int nKr, int spectrum) {
 
   int n = nKr;
@@ -347,38 +290,6 @@ void reorder(std::vector<Complex*> &kSpace, std::vector<Complex> evals, std::vec
   }
 }
 
-
-void reorder(std::vector<Complex*> &kSpace, std::vector<double> alpha, int nKr, bool reverse) {
-  int i = 0;
-  Complex temp[Nvec];
-  if (reverse) {
-    while (i < nKr) {
-      if ((i == 0) || (alpha[i - 1] >= alpha[i]))
-	i++;
-      else {
-	double tmp = alpha[i];
-	alpha[i] = alpha[i - 1];
-	alpha[--i] = tmp;
-	copy(temp, kSpace[i]);
-	copy(kSpace[i], kSpace[i-1]);
-	copy(kSpace[i-1], temp);
-      }
-    }
-  } else {
-    while (i < nKr) {
-      if ((i == 0) || (alpha[i - 1] <= alpha[i])) 
-	i++;
-      else {
-	double tmp = alpha[i];
-	alpha[i] = alpha[i - 1];
-	alpha[--i] = tmp;
-	copy(temp, kSpace[i]);
-	copy(kSpace[i], kSpace[i-1]);
-	copy(kSpace[i-1], temp);
-      }
-    }
-  }
-}
 
 void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 		      std::vector<Complex> &beta, std::vector<Complex> &alpha,
@@ -445,9 +356,9 @@ void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 
 
 void eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
-			     std::vector<Complex> &evals,
-			     std::vector<double> &residua,
-			     const double beta, int nKr)
+			    std::vector<Complex> &evals,
+			    std::vector<double> &residua,
+			    const double beta, int nKr)
 {
   // QR the upper Hessenberg matrix
   Eigen::ComplexSchur<MatrixXcd> schurUH;
@@ -469,122 +380,86 @@ void eigensolveFromUpperHess(MatrixXcd &upperHessEigen, MatrixXcd &Qmat,
   }  
 }
 
-void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, int dim)
+void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, const int nKr, const double tol)
 {  
-  Complex T11, T12, T21, T22, temp, temp2, temp3, U1, U2;
+  Complex T11, T12, T21, T22, U1, U2;
   double dV;
 
-  double tol = 1e-15;
-  
   // Allocate the rotation matrices.
-  Complex *R11 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R12 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R21 = (Complex*) malloc((dim-1)*sizeof(Complex));
-  Complex *R22 = (Complex*) malloc((dim-1)*sizeof(Complex));
+  std::vector<Complex> R11(nKr-1);
+  std::vector<Complex> R12(nKr-1);
+  std::vector<Complex> R21(nKr-1);
+  std::vector<Complex> R22(nKr-1);
 
   // First pass, determine the matrices and do H -> R.
-  for(int i = 0; i < dim-1; i++) {
+  for(int i = 0; i < nKr-1; i++) {
     if (abs(Rmat(i+1, i)) < tol) {
-      R11[i] = R12[i] = R21[i] = R22[i] = 0;
-      Rmat(i+1, i) = 0;
+      R11[i] = R12[i] = R21[i] = R22[i] = 0.0;
+      Rmat(i+1, i) = 0.0;
       continue;
     }
     
     dV = sqrt(norm(Rmat(i, i)) + norm(Rmat(i+1, i)));
     U1 = Rmat(i, i);
-    dV = (U1.real() > 0) ? dV : -dV;
+    dV = (U1.real() > 0.0) ? dV : -dV;
     U1 += dV;
     U2 = Rmat(i+1, i);
         
-    T11 = conj(U1);
-    T11 /= dV;
+    T11 = conj(U1) / dV;
     R11[i] = conj(T11);
 
-    T12 = conj(U2);
-    T12 /= dV;
+    T12 = conj(U2) / dV;
     R12[i] = conj(T12);
     
-    T21 = conj(T12);
-    temp = conj(U1);
-    temp /= U1;
-    T21 *= temp;
+    T21 = conj(T12) * conj(U1) / U1;
     R21[i] = conj(T21);
 
-    temp = U2 / U1;
-    T22 = T12 * temp;
+    T22 = T12 * U2 / U1;
     R22[i] = conj(T22);
 
-    // Do the H_kk and set the H_k+1k to zero
-    temp = Rmat(i, i);
-    temp2 = T11 * temp;
-    temp3 = T12 * Rmat(i+1, i);
-    temp2 += temp3;
-    Rmat(i, i) -= temp2;
+    Rmat(i, i) -= (T11 * Rmat(i, i) + T12 * Rmat(i+1, i));
     Rmat(i+1, i) = 0;
     
-    // Continue for the other columns
-#pragma omp parallel for
-    for(int j=i+1; j < dim; j++) {
-      Complex tempp = Rmat(i, j);
-      Complex tempp2 = T11 * tempp;
-      tempp2 += T12 * Rmat(i+1, j);
-      Rmat(i, j) -= tempp2;
-      
-      tempp2 = T21 * tempp;
-      tempp2 += T22 * Rmat(i+1, j);
-      Rmat(i+1, j) -= tempp2;
+#pragma omp parallel for schedule(static,32)  
+    for(int j=i+1; j < nKr; j++) {
+      Complex temp = Rmat(i, j);
+      Rmat(i, j)   -= (T11 * Rmat(i, j) + T12 * Rmat(i+1, j));      
+      Rmat(i+1, j) -= (T21 * temp + T22 * Rmat(i+1, j));
     }
   }
 
-  // Rotate R and V, i.e. H->RQ. V->VQ 
-  for(int j = 0; j < dim - 1; j++) {
+  for(int j = 0; j < nKr - 1; j++) {
     if(abs(R11[j]) > tol) {
-#pragma omp parallel for
-      for(int i = 0; i < j+2; i++) {
-	Complex tempp = Rmat(i, j);
-	Complex tempp2 = R11[j] * tempp;
-	tempp2 += R12[j] * Rmat(i, j+1);
-	Rmat(i, j) -= tempp2;
+#pragma omp parallel 
+      {
+#pragma omp for schedule(static,32)  
+	for(int i = 0; i < j+2; i++) {
+	  Complex temp = Rmat(i, j);
+	  Rmat(i, j) -= (R11[j] * temp + R12[j] * Rmat(i, j+1));	
+	  Rmat(i, j+1) -= (R21[j] * temp + R22[j] * Rmat(i, j+1));	
+	}
 	
-	tempp2 = R21[j] * tempp;
-	tempp2 += R22[j] * Rmat(i, j+1);
-	Rmat(i, j+1) -= tempp2;
+#pragma omp for schedule(static,32) 
+	for(int i = 0; i < nKr; i++) {
+	  Complex temp = Qmat(i, j);
+	  Qmat(i, j) -= (R11[j] * temp + R12[j] * Qmat(i, j+1));
+	  Qmat(i, j+1) -= (R21[j] * temp + R22[j] * Qmat(i, j+1));	
+	}
       }
-
-#pragma omp parallel for
-      for(int i = 0; i < dim; i++) {
-	Complex tempp = Qmat(i, j);
-	Complex tempp2 = R11[j] * tempp;
-	tempp2 += R12[j] * Qmat(i, j+1);
-	Qmat(i, j) -= tempp2;
-	
-	tempp2 = R21[j] * tempp;
-	tempp2 += R22[j] * Qmat(i, j+1);
-	Qmat(i, j+1) -= tempp2;
-      }
-    }
+    }  
   }
-  
-  // Free allocated vectors
-  free(R11);
-  free(R12);
-  free(R21);
-  free(R22);
-} 
+}
 
-int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, int nKr)
+int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> &evals, std::vector<double> &residua, const double beta, const int nKr, const double tol)
 {
-  // Do not overwrite the upper Hessenberg matrix!
+
   MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
   Rmat = upperHess;
-
-  // This is about as high as one cat get in double without causing
-  // the Arnoldi to compute more restarts.
-  double tol = 1e-11;
+  
+  Complex temp, discriminant, sol1, sol2, eval;
   int max_iter = 100000;
   int iter = 0;
-
-  Complex temp, discriminant, sol1, sol2, eval;
+  
   for (int i = nKr-2; i >= 0; i--) {    
     while (iter < max_iter) {
       if(abs(Rmat(i+1, i)) < tol) {
@@ -594,6 +469,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
       
 	// Compute the 2 eigenvalues via the quadratic formula
 	//----------------------------------------------------
+
 	// The discriminant
 	temp = (Rmat(i, i) - Rmat(i+1, i+1)) * (Rmat(i, i) - Rmat(i+1, i+1)) / 4.0;
 	discriminant = sqrt(Rmat(i+1, i) * Rmat(i, i+1) + temp);
@@ -603,8 +479,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
 	
 	sol1 = temp - Rmat(i+1, i+1) + discriminant;
 	sol2 = temp - Rmat(i+1, i+1) - discriminant;
-	//----------------------------------------------------
-	
+
 	// Deduce the better eval to shift
 	eval = Rmat(i+1, i+1) + (norm(sol1) < norm(sol2) ? sol1 : sol2);
 	
@@ -612,7 +487,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
 	for(int j = 0; j < nKr; j++) Rmat(j, j) -= eval;
 	
 	// Do the QR iteration
-	qriteration(Rmat, Qmat, nKr);
+	qriteration(Rmat, Qmat, nKr, tol);
 	
 	// Shift back
 	for(int j = 0; j < nKr; j++) Rmat(j, j) += eval;
@@ -621,9 +496,6 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
     } 
   }
 
-  // Compute the eigevectors of the origial upper Hessenberg
-  // This is now very cheap because the input matrix to Eigen
-  // is upper triangular
   MatrixXcd matUpper = MatrixXcd::Zero(nKr, nKr);
   matUpper = Rmat.triangularView<Eigen::Upper>();
   matUpper.conservativeResize(nKr, nKr);
@@ -636,7 +508,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
     residua[i] = abs(beta * Qmat.col(i)[nKr-1]);
   }
   
-  if(verbose) printf("QR iterations = %d\n", iter);
+  printf("QR iterations = %d\n", iter);
   
   return iter;  
 }
@@ -687,16 +559,13 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
     for (int j = 0; j < dim; j++) {
       //Place data in COLUMN major 
       ritz_mat[dim * i + j] = eigenSolver.eigenvectors().col(i)[j];
-      //printf("%+.4e ",ritz_mat[dim * i + j]);      
     }
-    //printf("\n");
   }
   
   for (int i = 0; i < dim; i++) {
     residua[i + num_locked] = fabs(beta[nKr - 1] * eigenSolver.eigenvectors().col(i)[dim - 1]);
     // Update the alpha array
     alpha[i + num_locked] = eigenSolver.eigenvalues()[i];
-    //printf("EFAM: resid = %e, alpha = %e\n", residua[i + num_locked], alpha[i + num_locked]);
   }
 
   // Put spectrum back in order
@@ -705,7 +574,7 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
   }  
 }
 
-void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<Complex> &arrow_eigs, std::vector<double> &residua, bool reverse) {
+void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<double> &arrow_eigs, std::vector<double> &residua, bool reverse) {
 
   int block_data_length = block_size * block_size;
   int dim = nKr - num_locked;
@@ -801,21 +670,14 @@ void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int blo
 void computeEvals(Complex **mat, std::vector<Complex*> &kSpace, std::vector<double> &residua, std::vector<Complex> &evals, int nEv) {
   
   //temp vector
-  Complex temp[Nvec];
+  Complex temp[mat_size];
   for (int i = 0; i < nEv; i++) {
     // r = A * v_i
     matVec(mat, temp, kSpace[i]);
 
     // lambda_i = v_i^dag A v_i / (v_i^dag * v_i)
-    //cout << i << " " << cDotProd(kSpace[i], temp) << " " << norm(kSpace[i]) << " " << norm(temp) << " " << cDotProd(kSpace[i], temp) / norm(kSpace[i]) << endl;
-    
-    //evals[i] = cDotProd(kSpace[i], temp) / norm(kSpace[i]);
     evals[i] = cDotProd(kSpace[i], temp);
 
-    for(int j=0; j<3; j++) {
-      //cout << "elem " << j << ": " << evals[i] * kSpace[i][j] << " " << temp[j] << " " << temp[j]/(evals[i] * kSpace[i][j]) << endl;      
-    }
-    
     // Measure ||lambda_i*v_i - A*v_i||
     Complex n_unit(-1.0, 0.0);
     caxpby(evals[i], kSpace[i], n_unit, temp);
@@ -826,7 +688,7 @@ void computeEvals(Complex **mat, std::vector<Complex*> &kSpace, std::vector<doub
 void rotateVecs(std::vector<Complex*> &vecs, Eigen::MatrixXd mat, int num_locked, int iter_keep, int dim) {
 
   //loop over rows of V_k
-  for(int j=0; j<Nvec; j++) {    
+  for(int j=0; j<mat_size; j++) {    
     
     //put jth row of V_k in temp
     Complex tmp[dim];  
@@ -853,7 +715,7 @@ void rotateVecs(std::vector<Complex*> &vecs, Eigen::MatrixXd mat, int num_locked
 void rotateVecsComplex(std::vector<Complex*> &vecs, Eigen::MatrixXcd mat, int num_locked, int iter_keep, int dim) {
 
   //loop over rows of V_k
-  for(int j=0; j<Nvec; j++) {    
+  for(int j=0; j<mat_size; j++) {    
     
     //put jth row of V_k in temp
     Complex tmp[dim];  
@@ -959,7 +821,7 @@ void permuteVecs(std::vector<Complex*> &kSpace, Eigen::MatrixXd mat, int num_loc
   // swapped into the correct place. A positive
   // value indicates the start of a new cycle.
 
-  Complex temp[Nvec];
+  Complex temp[mat_size];
   for (int i=0; i<size; i++) {
     //Cycles always start at 0, hence OR statement
     if(pivots[i] > 0 || i==0) {
@@ -975,8 +837,6 @@ void permuteVecs(std::vector<Complex*> &kSpace, Eigen::MatrixXd mat, int num_loc
 	k = j;
 	j = -pivots[j];
       }
-    } else {
-      //printf("%d already swapped\n", i);
     }
   }
   for (int i=0; i<size; i++) {
@@ -992,23 +852,14 @@ void computeKeptRitzLU(std::vector<Complex*> &kSpace, int nKr, int num_locked, i
   int offset = nKr + 1;
   int dim = nKr - num_locked;
 
-  printf("dim = %d\n", dim);
-  printf("iter_keep = %d\n", iter_keep);
-  printf("num_locked = %d\n", num_locked);
-  printf("kspace size = %d\n", (int)kSpace.size());
-
   int batch_size = batch;
   int full_batches = iter_keep/batch_size;
   int batch_size_r = iter_keep%batch_size;
   bool do_batch_remainder = (batch_size_r != 0 ? true : false);
   
-  printf("batch_size = %d\n", batch_size);
-  printf("full_batches = %d\n", full_batches);
-  printf("batch_size_r = %d\n", batch_size_r);
-  
   if ((int)kSpace.size() < offset + batch_size) {
     for (int i = kSpace.size(); i < offset + batch_size; i++) {
-      kSpace.push_back(new Complex[Nvec]);
+      kSpace.push_back(new Complex[mat_size]);
     }
   }
 

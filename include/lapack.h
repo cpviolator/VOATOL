@@ -1,5 +1,7 @@
 #pragma once
 
+extern int mat_size;
+
 void zscal(int n, Complex da, Complex *X, int incx) {
   //Scales a vector by a constant
   for(int i=0; i<n; i+=incx) {
@@ -45,7 +47,7 @@ void zlascl(double cfrom, double cto, Complex *X) {
       done = true;
     }
     
-    for(int j=0; j < Nvec; j++) X[j] *= mul;
+    for(int j=0; j < mat_size; j++) X[j] *= mul;
   }
 }
 
@@ -605,7 +607,7 @@ void zgeqr2(int M, int N, Eigen::MatrixXcd &A, Complex *tau) {
     zlarfg(M-i, A(i,i), X, 1, tau[i]);
     cout << "Aii post = " << A(i,i) << endl;
     cout << "tau post = " << tau[i] << endl;
-    //cout << "tau - A(i,i) pre = " << tau[i] - Aiipre << endl;
+    cout << "tau - A(i,i) pre = " << tau[i] - Aiipre << endl;
     
     for(int l=0; l<M; l++)
       for(int j=0; j<M; j++)
@@ -733,7 +735,7 @@ void znapps(int num_keep, int nshifts, std::vector<Complex> ritz_vals, Eigen::Ma
 	
 	Complex t = 0.0;
 	for(int j=i; j<dim; j++) {
-	  Complex t = c*upperHess(i,j) + s*upperHess(i+1,j);
+	  t = c*upperHess(i,j) + s*upperHess(i+1,j);
 	  upperHess(i+1,j) = -conj(s)*upperHess(i,j) + c*upperHess(i+1,j);
 	  upperHess(i,j) = t;
 	}
@@ -907,7 +909,7 @@ void givensQRUpperHess(Eigen::MatrixXcd &UH, Eigen::MatrixXcd &Q, int nKr,
   // starndards
   double unfl = DBL_MIN;
   double ulp = DBL_EPSILON;
-  double smlnum = unfl*(Nvec/ulp);
+  double smlnum = unfl*(mat_size/ulp);
   
   //%----------------------------------------%
   //| Check for splitting and deflation. Use |
@@ -1026,7 +1028,7 @@ void zlahqr(bool WANTT, bool WANTZ, int N, int ILO, int IHI,
   Complex cZero(0.0,0.0);
   Complex cOne(1.0,0.0);
 
-  int I1, I2, ITN, ITS, j, k, l, m, NH, NZ;
+  int I1, I2, ITN, ITS, k, l, m, NH, NZ;
   double H10, H21, RTEMP, S, SMLNUM, T2, TST1, ULP, UNFL;
   Complex CDUM, H11, H11S, H22, SUM, T, T1, TEMP, U, V2, X, Y;
 
