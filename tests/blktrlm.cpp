@@ -1,29 +1,10 @@
-#include <iostream>
-#include <stdio.h>
-#include <fstream>
-#include <iomanip>
-#include <complex>
-#include <cmath>
-#include <vector>
-#include <cstring>
-#include <cfloat>
-#include <random>
-#include <unistd.h>
-#include <sys/time.h>
-
-int mat_size = 128;
-
-#include "Eigen/Eigenvalues"
-using namespace std;
-using Eigen::MatrixXcd;
-using Eigen::MatrixXd;
+#include "voatol_internal.h"
+#include "algorithm_utils.h"
+#include "blas.h"
+#include "sort.h"
 
 bool verbose = false;
-
-#define Complex complex<double>
-#include "linAlgHelpers.h"
-#include "algoHelpers.h"
-#include "lapack.h"
+int mat_size = 128;
 
 int main(int argc, char **argv) {
 
@@ -174,7 +155,7 @@ int main(int argc, char **argv) {
   
   //Gram-Schmidt initial sources
   gramSchmidt(r);
-  orthoCheck(r, block_size, true);
+  orthoCheck(r, block_size);
 
   for(int b=0; b<block_size; b++) copy(kSpace[b], r[b]);
   t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;

@@ -1,30 +1,11 @@
-#include <iostream>
-#include <stdio.h>
-#include <fstream>
-#include <iomanip>
-#include <complex>
-#include <cmath>
-#include <vector>
-#include <cstring>
-#include <cfloat>
-#include <random>
-#include <unistd.h>
-#include <sys/time.h>
-
-int mat_size = 128;
-
-#include "Eigen/Eigenvalues"
-using namespace std;
-using Eigen::MatrixXcd;
-using Eigen::MatrixXd;
+#include "voatol_internal.h"
+#include "algorithm_utils.h"
+#include "io.h"
+#include "blas.h"
+#include "sort.h"
 
 bool verbose = false;
-
-#define Complex complex<double>
-#include "linAlgHelpers.h"
-#include "algoHelpers.h"
-#include "lapack.h"
-#include "io.h"
+int mat_size = 128;
 
 int main(int argc, char **argv) {
 
@@ -271,7 +252,7 @@ int main(int argc, char **argv) {
       converged = true;
     }    
     restart_iter++;
-    //string testy = "test";
+    
     gettimeofday(&start, NULL);  
     saveTRLMSolverState(mat, kSpace, alpha, beta, testy);
     gettimeofday(&end, NULL);  

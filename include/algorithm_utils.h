@@ -3,10 +3,8 @@
 extern int mat_size;
 extern bool verbose;
 
-#include "linAlgHelpers.h"
-
-std::vector<double> ritz_mat;
-std::vector<Complex> block_ritz_mat;
+#include "voatol_internal.h"
+#include "blas.h"
 
 //Functions used in the lanczos algorithm
 //---------------------------------------
@@ -50,7 +48,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
 
 void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<double> &alpha, std::vector<double> &beta, std::vector<double> &residua, bool reverse); 
 
-void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<Complex> &arrow_eigs, std::vector<double> &residua, bool reverse);
+void eigensolveFromBlockArrowMat(int num_locked, int arrow_pos, int nKr, int block_size, int restart_iter, std::vector<Complex> &alpha, std::vector<Complex> &beta, std::vector<double> &arrow_eigs, std::vector<double> &residua, bool reverse);
 
 void computeEvals(Complex **mat, std::vector<Complex*> &kSpace, std::vector<double> &residua, std::vector<Complex> &evals, int nEv);
   

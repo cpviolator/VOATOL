@@ -1,29 +1,10 @@
-#include <iostream>
-#include <stdio.h>
-#include <fstream>
-#include <iomanip>
-#include <complex>
-#include <cmath>
-#include <vector>
-#include <cstring>
-#include <cfloat>
-#include <random>
-#include <unistd.h>
-#include <sys/time.h>
-
-int mat_size = 128;
-
-#include "Eigen/Eigenvalues"
-using namespace std;
-using Eigen::MatrixXcd;
-using Eigen::MatrixXd;
+#include "voatol_internal.h"
+#include "algorithm_utils.h"
+#include "blas.h"
+#include "sort.h"
 
 bool verbose = false;
-
-#define Complex complex<double>
-#include "algoHelpers.h"
-#include "linAlgHelpers.h"
-#include "lapack.h"
+int mat_size = 128;
 
 int main(int argc, char **argv) {
 
@@ -83,7 +64,7 @@ int main(int argc, char **argv) {
   MatrixXcd ref = MatrixXcd::Random(mat_size, mat_size);
   MatrixXcd diagonal = MatrixXcd::Identity(mat_size, mat_size);
   diagonal *= diag;
-  
+
   //Copy Eigen ref matrix.
   Complex **mat = (Complex**)malloc(mat_size*sizeof(Complex*));
   for(int i=0; i<mat_size; i++) {
@@ -94,7 +75,7 @@ int main(int argc, char **argv) {
       if(i == j) mat[i][j] += diag;
     }
   }
-
+  
   // Construct objects for IRAM.
   //---------------------------------------------------------------------
   //Eigenvalues and their residua
@@ -364,7 +345,7 @@ int main(int argc, char **argv) {
   }
 
   gettimeofday(&total_end, NULL);  
-  t_total = ((total_end.tv_sec  - total_start.tv_sec) * 1000000u + total_end.tv_usec - total_start.tv_usec) / 1.e6;
+  t_total = ((total_end.tv_sec - total_start.tv_sec) * 1000000u + total_end.tv_usec - total_start.tv_usec) / 1.e6;
   
   // Post computation report  
   if (!converged) {    

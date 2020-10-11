@@ -1,6 +1,4 @@
-#pragma once
-
-#include <omp.h>
+#include <blas.h>
 
 extern int mat_size;
 extern bool verbose;
@@ -179,7 +177,7 @@ void measOrthoDev(std::vector<Complex*> vecs, std::vector<Complex*> r, std::vect
   }
 }
 
-bool orthoCheck(std::vector<Complex*> vecs, int size, bool verbose = false) {
+bool orthoCheck(std::vector<Complex*> vecs, int size) {
   
   bool orthed = true;
   const Complex Unit(1.0,0.0);
@@ -286,7 +284,7 @@ void gramSchmidtRecursive(std::vector<Complex*> &vecs, std::vector<Complex> &bet
     }
     // Accumulate R_{k}
     updateBlockBeta(tmp, beta, k, block_offset, block_size);
-    orthed = orthoCheck(vecs, block_size, false);
+    orthed = orthoCheck(vecs, block_size);
     k++;
   }
 }

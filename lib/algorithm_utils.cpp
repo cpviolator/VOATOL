@@ -1,15 +1,10 @@
-#pragma once
-
-extern int mat_size;
-extern bool verbose;
-
-#include "linAlgHelpers.h"
+#include "algorithm_utils.h"
 
 std::vector<double> ritz_mat;
 std::vector<Complex> block_ritz_mat;
 
-//Functions used in the lanczos algorithm
-//---------------------------------------
+//Functions used in the lanczos algorithms
+//----------------------------------------
 void iterRefineReal(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, std::vector<double> &alpha, std::vector<double> &beta, int j) {
   
   std::vector<Complex> s(j+1);
@@ -291,6 +286,38 @@ void reorder(std::vector<Complex*> &kSpace, std::vector<Complex> evals, std::vec
 }
 
 
+void reorder(std::vector<Complex*> &kSpace, std::vector<double> alpha, int nKr, bool reverse) {
+  int i = 0;
+  Complex temp[mat_size];
+  if (reverse) {
+    while (i < nKr) {
+      if ((i == 0) || (alpha[i - 1] >= alpha[i]))
+	i++;
+      else {
+	double tmp = alpha[i];
+	alpha[i] = alpha[i - 1];
+	alpha[--i] = tmp;
+	copy(temp, kSpace[i]);
+	copy(kSpace[i], kSpace[i-1]);
+	copy(kSpace[i-1], temp);
+      }
+    }
+  } else {
+    while (i < nKr) {
+      if ((i == 0) || (alpha[i - 1] <= alpha[i])) 
+	i++;
+      else {
+	double tmp = alpha[i];
+	alpha[i] = alpha[i - 1];
+	alpha[--i] = tmp;
+	copy(temp, kSpace[i]);
+	copy(kSpace[i], kSpace[i-1]);
+	copy(kSpace[i-1], temp);
+      }
+    }
+  }
+}
+
 void blockLanczosStep(Complex **mat, std::vector<Complex*> &kSpace,
 		      std::vector<Complex> &beta, std::vector<Complex> &alpha,
 		      std::vector<Complex*> &r, int num_keep, int j, int block_size,
@@ -385,6 +412,8 @@ void qriteration(MatrixXcd &Rmat, MatrixXcd &Qmat, const int nKr, const double t
   Complex T11, T12, T21, T22, U1, U2;
   double dV;
 
+  //double tol = 1e-15;
+  
   // Allocate the rotation matrices.
   std::vector<Complex> R11(nKr-1);
   std::vector<Complex> R12(nKr-1);
@@ -456,6 +485,7 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
   MatrixXcd Rmat = MatrixXcd::Zero(nKr, nKr);
   Rmat = upperHess;
   
+  //double tol = 1e-15;
   Complex temp, discriminant, sol1, sol2, eval;
   int max_iter = 100000;
   int iter = 0;
@@ -508,8 +538,8 @@ int qrFromUpperHess(MatrixXcd &upperHess, MatrixXcd &Qmat, std::vector<Complex> 
     residua[i] = abs(beta * Qmat.col(i)[nKr-1]);
   }
   
-  printf("QR iterations = %d\n", iter);
-  
+  printf("eigensystem iterations = %d\n", iter);
+
   return iter;  
 }
 
@@ -559,13 +589,16 @@ void eigensolveFromArrowMat(int num_locked, int arrow_pos, int nKr, std::vector<
     for (int j = 0; j < dim; j++) {
       //Place data in COLUMN major 
       ritz_mat[dim * i + j] = eigenSolver.eigenvectors().col(i)[j];
+      //printf("%+.4e ",ritz_mat[dim * i + j]);      
     }
+    //printf("\n");
   }
   
   for (int i = 0; i < dim; i++) {
     residua[i + num_locked] = fabs(beta[nKr - 1] * eigenSolver.eigenvectors().col(i)[dim - 1]);
     // Update the alpha array
     alpha[i + num_locked] = eigenSolver.eigenvalues()[i];
+    //printf("EFAM: resid = %e, alpha = %e\n", residua[i + num_locked], alpha[i + num_locked]);
   }
 
   // Put spectrum back in order
