@@ -47,7 +47,7 @@ common to all solvers:
 
 TRLM is used in the following fashion:
 
-./trlm mat_size nKr nEv nConv max-restarts diag tol amin amax polydeg spectrum: 0=LR, 1=SR LU batch verbosity: 1=verbose, 0=quiet Eigen Check: 0=false, 1=true
+./trlm mat_size nKr nEv nConv max-restarts diag tol amin amax polydeg spectrum LU batch verbosity Eigen_Check
 
 TRLM is a symmetric eigensolver, so we allow the use of Chebyshev polynomial
 acceleration:
@@ -76,9 +76,7 @@ no batched rotation option for BLKTRLM.
 
 BLKTRLM is used in the following fashion:
 
-./block_trlm <mat_size> <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <amin> <amax>
-	     <polydeg> <spectrum: 0=LR, 1=SR> <block> <verbosity: 1=verbose, 0=quiet>
-	     <Eigen Check: 0=false, 1=true>
+./block_trlm mat_size nKr nEv nConv max-restarts diag tol amin polydeg spectrum block verbosity Eigen_Check
 
 The extra options are:
 
@@ -90,9 +88,7 @@ Arnoldi can solve hermitian and non-hermitian matrices. As such, we do not allow
 polynomial acceleration to be employed, but one may solve for an hermitian
 or non-hermitian matrix. The general usage is:
 
-./iram <mat_size> <nKr> <nEv> <nConv> <max-restarts> <diag> <tol>
-       <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym>
-       <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>
+./iram mat_size nKr nEv nConv max-restarts diag tol spectrum verbosity Eigen Check
 
 The extra options are:
 
