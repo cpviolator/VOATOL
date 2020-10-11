@@ -17,7 +17,7 @@ VOATOL uses CMake. The standard CMake build instructions apply:
 1. mkdir VOATOL_build
 2. cd VOATOL_build
 3. cmake ../VOATOL -DENABLE_OPENMP
-4. make -j <N>
+4. make -j N
 
 ## Solvers
 
