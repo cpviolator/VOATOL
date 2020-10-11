@@ -43,7 +43,7 @@ ExternalProject_Add(
   BUILD_COMMAND ""
   INSTALL_COMMAND "")
 ExternalProject_Get_Property(Eigen source_dir)
-set(EIGEN_INCLUDE_DIRS ${source_dir})
+set(EIGEN_INCLUDE_DIR ${source_dir})
 
 add_subdirectory(lib)
 add_subdirectory(tests)

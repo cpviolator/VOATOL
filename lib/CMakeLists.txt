@@ -4,7 +4,7 @@ set (VOATOL_OBJS algorithm_utils.cpp io.cpp blas.cpp sort.cpp)
 add_library(voatol STATIC ${VOATOL_OBJS})
 add_dependencies(voatol Eigen)
 target_include_directories(voatol PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../include/)
-include_directories(${EIGEN_INCLUDE_DIRS})
+include_directories(${EIGEN_INCLUDE_DIR})
 
 add_custom_command( TARGET voatol POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
 
