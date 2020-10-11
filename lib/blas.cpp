@@ -52,7 +52,7 @@ void caxpby(Complex a, Complex *x, Complex b, Complex *y) {
 
 Complex dotProd(Complex *x, Complex *y) {
   Complex prod = 0.0;
-#pragma omp parallel for reduction(+:prod) 
+  //#pragma omp parallel for reduction(+:prod) 
   for(int i=0; i<mat_size; i++) prod += x[i]*y[i];
   return prod;
 }
@@ -65,7 +65,7 @@ Complex dotProdMatVec(Complex *x, Complex *y) {
 
 Complex cDotProd(const Complex *x, const Complex *y) {
   Complex prod = 0.0;
-#pragma omp parallel for reduction(+:prod) 
+  //#pragma omp parallel for reduction(+:prod) 
   for(int i=0; i<mat_size; i++) prod += conj(x[i])*y[i];
   return prod;
 }
@@ -223,13 +223,6 @@ void updateBlockBeta(std::vector<Complex> tmp, std::vector<Complex> &beta, int k
       }
     }
 
-    for(int b=0; b<block_size; b++) {
-      for(int c=0; c<block_size; c++) {
-	idx = b*block_size + c;
-	//printf("(%e,%e) ", tmp[idx].real(), tmp[idx].imag()); 
-      }
-      //printf("\n");
-    }
     betaNEigen = RkEigen * betaEigen;
     for(int b=0; b<block_size; b++) {
       for(int c=0; c<block_size; c++) {
@@ -237,14 +230,6 @@ void updateBlockBeta(std::vector<Complex> tmp, std::vector<Complex> &beta, int k
 	beta[block_offset + idx] = betaNEigen(c,b);
       }
     }
-  }
-  int idx = 0;
-  for(int b=0; b<block_size; b++) {
-    for(int c=0; c<block_size; c++) {
-      idx = b*block_size + c;
-      //printf("(%e,%e) ", beta[block_offset + idx].real(), beta[block_offset + idx].imag()); 
-    }
-    //printf("\n");
   }
 }
 

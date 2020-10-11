@@ -48,8 +48,8 @@ void CAXPY(std::vector<Complex*> vecs, std::vector<Complex*> &r, std::vector<Com
 void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, std::vector<Complex> &alpha, std::vector<Complex> &beta, int j) {
 
   int block_size = (int)r.size();
-  //int alpha_block_offset = j * block_size;
-  //int beta_block_offset  = (j - block_size) * block_size;
+  int alpha_block_offset = j * block_size;
+  int beta_block_offset  = (j - block_size) * block_size;
   
   // r = r - s_{i} * v_{i}
   std::vector<Complex> s((j + block_size) * block_size, 0.0);
@@ -64,8 +64,8 @@ void iterRefineBlock(std::vector<Complex*> &kSpace, std::vector<Complex*> &r, st
     for(int i=0; i<block_size; i++) {
       for(int k=0; k<block_size; k++) {
 	idx = i*block_size + k;
-	//alpha[alpha_block_offset + idx] += s[alpha_block_offset + idx];
-	//if(j>0) beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
+	alpha[alpha_block_offset + idx] += s[alpha_block_offset + idx];
+	if(j>0) beta[beta_block_offset   + idx] += s[beta_block_offset  + idx];
       }
     }    
     count++;
