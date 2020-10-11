@@ -26,10 +26,8 @@ a random matrix and solve it using the given parameters. These are the parameter
 common to all solvers:
 
 * mat_size <int> The rank of the square matrix to solve
-
 * nKr <int> The size of the Krylov space
-
-nEv <int> The size of the compressed space
+* nEv <int> The size of the compressed space
 
 nConv <int> The number of converged eigenvalues to compute
 
