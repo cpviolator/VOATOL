@@ -310,36 +310,11 @@ int main(int argc, char **argv) {
       caxpby(upperHessEigen(num_keep, num_keep-1), kSpace[num_keep], Qmat(dim-1, num_keep-1), r[0]);
       gettimeofday(&end, NULL);  
       t_compute += ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
- #if 1
+
       if(norm(r[0]) < epsilon) {
 	printf("Congratulations! You have reached an invariant subspace at iter %d, beta = %e\n", restart_iter, norm(r[0]));
-	
-	printf("Using random guess\n");
-	for(int i=0; i<mat_size; i++) {
-	  kSpace[num_keep][i].real(drand48());
-	  kSpace[num_keep][i].imag(drand48());    
-	}
-	
-	Complex alpha = 0.0;
-	for(int i=0; i < num_keep; i++) {
-	  alpha = cDotProd(kSpace[i], kSpace[num_keep]);
-	  upperHessEigen(i,num_keep-1) += alpha;
-	  caxpy(-1.0*alpha, kSpace[i], kSpace[num_keep]);
-	}
-	
-	if(verbose) {
-	  // Measure orthonormality
-	  for(int i=0; i < num_keep; i++) {
-	    alpha = cDotProd(kSpace[i], kSpace[num_keep]);
-	    cout << "alpha = " << alpha <<endl;
-	  }
-	}
-	upperHessEigen(num_keep, num_keep-1).real(normalise(kSpace[num_keep]));
-	caxpby(upperHessEigen(num_keep, num_keep-1), kSpace[num_keep], Qmat(dim-1, num_keep-1), r[0]);
-	nEv -= 1;
+	exit(0);
       }
-#endif
-      
     }
     restart_iter++;    
   }
