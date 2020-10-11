@@ -1,4 +1,6 @@
-# VOATAL (Variations On A Theme Of Lanczos, "vote-ol") 11 Oct 2020
+# VOATAL
+
+(Variations On A Theme Of Lanczos, "vote-ol") 11 Oct 2020
 
 ## Synopsis
 
