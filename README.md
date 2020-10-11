@@ -25,9 +25,9 @@ VOATOL offers three solvers, located in the 'test' directory. Each will construc
 a random matrix and solve it using the given parameters. These are the parameters
 common to all solvers:
 
-mat_size <int> The rank of the square matrix to solve
+* mat_size <int> The rank of the square matrix to solve
 
-nKr <int> The size of the Krylov space
+* nKr <int> The size of the Krylov space
 
 nEv <int> The size of the compressed space
 
