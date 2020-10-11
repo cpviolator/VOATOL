@@ -5,7 +5,7 @@
 ## Synopsis
 
 VOATOL is a C++ playground for Lanczos and Arnoldi restarted eigensolvers.
-Some OMP paralleleism is employed, but the purpose of this repository
+Some OMP parallelism is employed, but the purpose of this repository
 is to give the user an accessible entry point into how restarted
 eigensolvers work. Ideally, the user would learn from this repository
 and implement one of the solvers in their own framework.
