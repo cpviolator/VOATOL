@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
   //---------------------------------------------------------  
   gettimeofday(&start, NULL);  
   if (argc < 12 || argc > 12) {
-    cout << "./irlm <mat_size> <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
+    cout << "./iram <mat_size> <nKr> <nEv> <nConv> <max-restarts> <diag> <tol> <spectrum: 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI> <mat_type: 0=asym, 1=sym> <verbosity: 1=verbose, 0=quiet> <Eigen Check: 0=false, 1=true>" << endl;
     exit(0);
   }
 
