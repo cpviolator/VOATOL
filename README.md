@@ -25,27 +25,21 @@ VOATOL offers three solvers, located in the 'test' directory. Each will construc
 a random matrix and solve it using the given parameters. These are the parameters
 common to all solvers:
 
-* mat_size <int> The rank of the square matrix to solve
-* nKr <int> The size of the Krylov space
-* nEv <int> The size of the compressed space
-
-nConv <int> The number of converged eigenvalues to compute
-
-max_restarts The maximum number of restarts
-
-diag <double> Add this diagonal constant to the problem matrix
-
-tol <double> Residual tolerance of the eigenvalues
-
-spectrum <int> 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI
+* mat_size (int) The rank of the square matrix to solve
+* nKr (int) The size of the Krylov space
+* nEv (int) The size of the compressed space
+* nConv (int) The number of converged eigenvalues to compute
+* max_restarts The maximum number of restarts
+* diag (double) Add this diagonal constant to the problem matrix
+* tol (double) Residual tolerance of the eigenvalues
+* spectrum (int) 0=LM, 1=SM, 2=LR, 3=SR, 4=LI, 5=SI
                with S=Smallest
 	            L=Largest
 		    M=Modulus
                     R=Real
-	            I=Imaginary
-		    
-verbosity <int> Give verbose output
-                1=verbose, 0=quiet
+	            I=Imaginay
+* verbosity (int) Give verbose output
+                  1=verbose, 0=quiet
 
 Eigen Check <int> Cross check VOATOL's results against Eigen
                   0=false, 1=true
