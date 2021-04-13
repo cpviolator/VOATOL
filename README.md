@@ -1,4 +1,4 @@
-# VOATAL
+# VOATOL
 
 (Variations On A Theme Of Lanczos, "vote-ol") 11 Oct 2020
 
