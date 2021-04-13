@@ -69,7 +69,7 @@ useful in HPC applications where memory is limited.
 ### Block Thick Restarted Lanczos Method (BLKTRLM)
 
 This solver is the Block version of TRLM. It works by ensuring a block
-of Krylov vectors remain orthonormal durung the algorithm. It is useful
+of Krylov vectors remain orthonormal during the algorithm. It is useful
 in HPC applications where one can save time by moving the matrix data
 to the registers once, while also moving multiple vectors. There is
 no batched rotation option for BLKTRLM.
